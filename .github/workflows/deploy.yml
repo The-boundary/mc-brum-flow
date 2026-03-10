@@ -46,7 +46,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            NPM_TOKEN=${{ secrets.NPM_TOKEN }}
             GIT_COMMIT_HASH=${{ github.sha }}
             VITE_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
             VITE_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}

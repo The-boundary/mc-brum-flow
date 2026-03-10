@@ -7,10 +7,8 @@ COPY package*.json ./
 COPY client/package*.json ./client/
 COPY server/package*.json ./server/
 COPY shared/package*.json ./shared/
-ARG NPM_TOKEN
-RUN echo "@the-boundary:registry=https://npm.pkg.github.com" > .npmrc && \
-    echo "//npm.pkg.github.com/:_authToken=${NPM_TOKEN}" >> .npmrc && \
-    echo "legacy-peer-deps=true" >> .npmrc
+COPY vendor ./vendor
+RUN echo "legacy-peer-deps=true" > .npmrc
 RUN npm install --workspace=client --workspace=shared
 RUN rm -f .npmrc
 COPY client ./client
@@ -27,10 +25,8 @@ COPY package*.json ./
 COPY server/package*.json ./server/
 COPY client/package*.json ./client/
 COPY shared/package*.json ./shared/
-ARG NPM_TOKEN
-RUN echo "@the-boundary:registry=https://npm.pkg.github.com" > .npmrc && \
-    echo "//npm.pkg.github.com/:_authToken=${NPM_TOKEN}" >> .npmrc && \
-    echo "legacy-peer-deps=true" >> .npmrc
+COPY vendor ./vendor
+RUN echo "legacy-peer-deps=true" > .npmrc
 RUN npm install
 RUN rm -f .npmrc
 COPY server ./server
