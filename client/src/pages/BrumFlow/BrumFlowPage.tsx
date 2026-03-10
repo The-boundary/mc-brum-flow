@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useRef, type ReactNode } from 'react';
 import {
   Workflow, List, PanelRightOpen, PanelRightClose, Loader2,
   Plus, LayoutGrid, ZoomIn, ZoomOut, Maximize2,
@@ -58,27 +58,26 @@ export default function BrumFlowPage() {
               <span className="truncate max-w-[200px]">{scene.name}</span>
             </button>
           ))}
-          <button
-            className="flex items-center gap-1 px-2.5 h-full text-xs text-muted-foreground hover:text-foreground hover:bg-surface-200/50 transition-colors"
-            title="Connect to 3ds Max instance"
-          >
-            <Plus className="w-3 h-3" />
-          </button>
+          <Tooltip text="Connect to 3ds Max instance">
+            <button className="flex items-center gap-1 px-2.5 h-full text-xs text-muted-foreground hover:text-foreground hover:bg-surface-200/50 transition-colors">
+              <Plus className="w-3 h-3" />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Toolbar + view toggle */}
         <div className="h-10 border-b border-border flex items-center justify-between px-3 shrink-0">
           {/* Left: toolbar actions */}
           <div className="flex items-center gap-1">
-            <ToolbarButton icon={Box} label="Add Shot" />
-            <ToolbarButton icon={Camera} label="Add Camera" />
-            <ToolbarButton icon={Palette} label="Add Scene State" />
-            <ToolbarButton icon={FileOutput} label="Add Output" />
+            <ToolbarButton icon={Box} tooltip="Add Shot" />
+            <ToolbarButton icon={Camera} tooltip="Add Camera" />
+            <ToolbarButton icon={Palette} tooltip="Add Scene State" />
+            <ToolbarButton icon={FileOutput} tooltip="Add Output" />
             <div className="w-px h-5 bg-border mx-1" />
-            <ToolbarButton icon={LayoutGrid} label="Auto Layout" />
-            <ToolbarButton icon={ZoomIn} label="Zoom In" />
-            <ToolbarButton icon={ZoomOut} label="Zoom Out" />
-            <ToolbarButton icon={Maximize2} label="Fit View" />
+            <ToolbarButton icon={LayoutGrid} tooltip="Auto Layout" />
+            <ToolbarButton icon={ZoomIn} tooltip="Zoom In" />
+            <ToolbarButton icon={ZoomOut} tooltip="Zoom Out" />
+            <ToolbarButton icon={Maximize2} tooltip="Fit to View" />
           </div>
 
           {/* Right: view toggle + detail panel */}
@@ -111,17 +110,18 @@ export default function BrumFlowPage() {
               </button>
             </div>
 
-            <button
-              onClick={toggleDetailPanel}
-              className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-surface-300 transition"
-              title={detailPanelOpen ? 'Close detail panel' : 'Open detail panel'}
-            >
-              {detailPanelOpen ? (
-                <PanelRightClose className="w-4 h-4" />
-              ) : (
-                <PanelRightOpen className="w-4 h-4" />
-              )}
-            </button>
+            <Tooltip text={detailPanelOpen ? 'Close detail panel' : 'Open detail panel'}>
+              <button
+                onClick={toggleDetailPanel}
+                className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-surface-300 transition"
+              >
+                {detailPanelOpen ? (
+                  <PanelRightClose className="w-4 h-4" />
+                ) : (
+                  <PanelRightOpen className="w-4 h-4" />
+                )}
+              </button>
+            </Tooltip>
           </div>
         </div>
 
@@ -141,13 +141,44 @@ export default function BrumFlowPage() {
   );
 }
 
-function ToolbarButton({ icon: Icon, label }: { icon: React.ComponentType<{ className?: string }>; label: string }) {
+function ToolbarButton({ icon: Icon, tooltip, onClick }: { icon: React.ComponentType<{ className?: string }>; tooltip: string; onClick?: () => void }) {
   return (
-    <button
-      className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-surface-300 transition"
-      title={label}
+    <Tooltip text={tooltip}>
+      <button
+        onClick={onClick}
+        className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-surface-300 transition"
+      >
+        <Icon className="w-3.5 h-3.5" />
+      </button>
+    </Tooltip>
+  );
+}
+
+function Tooltip({ text, children }: { text: string; children: ReactNode }) {
+  const [show, setShow] = useState(false);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const ref = useRef<HTMLDivElement>(null);
+
+  return (
+    <div
+      ref={ref}
+      className="relative inline-flex"
+      onMouseEnter={(e) => {
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        setPos({ x: rect.left + rect.width / 2, y: rect.bottom + 6 });
+        setShow(true);
+      }}
+      onMouseLeave={() => setShow(false)}
     >
-      <Icon className="w-3.5 h-3.5" />
-    </button>
+      {children}
+      {show && (
+        <div
+          className="fixed z-50 px-2 py-1 rounded bg-surface-100 border border-border text-[10px] text-foreground whitespace-nowrap shadow-lg pointer-events-none"
+          style={{ left: pos.x, top: pos.y, transform: 'translateX(-50%)' }}
+        >
+          {text}
+        </div>
+      )}
+    </div>
   );
 }

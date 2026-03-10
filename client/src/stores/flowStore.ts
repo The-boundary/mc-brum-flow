@@ -134,6 +134,8 @@ function toDbContainer(c: Container): Omit<DbContainer, 'expanded'> {
   return { id: c.id, name: c.name, parent_id: c.parentId, scene_state_id: c.sceneStateId, output_path_template: c.outputPathTemplate, sort_order: c.sortOrder, scene_id: c.sceneId };
 }
 
+export type SelectionKind = 'shot' | 'container' | 'camera' | 'sceneState' | 'resolution' | 'output' | null;
+
 interface FlowState {
   scenes: Scene[];
   activeSceneId: string | null;
@@ -144,15 +146,18 @@ interface FlowState {
   loading: boolean;
   error: string | null;
 
-  // Selection
+  // Selection — unified model
   selectedShotId: string | null;
   selectedContainerId: string | null;
+  selectionKind: SelectionKind;
+  selectionId: string | null;
 
   // Actions
   loadAll: () => Promise<void>;
   setActiveScene: (id: string) => void;
   selectShot: (id: string | null) => void;
   selectContainer: (id: string | null) => void;
+  selectNode: (kind: SelectionKind, id: string | null) => void;
   toggleContainer: (id: string) => void;
   updateShot: (id: string, updates: Partial<Shot>) => Promise<void>;
   updateContainer: (id: string, updates: Partial<Container>) => Promise<void>;
@@ -178,6 +183,8 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   error: null,
   selectedShotId: null,
   selectedContainerId: null,
+  selectionKind: null,
+  selectionId: null,
 
   loadAll: async () => {
     set({ loading: true, error: null });
@@ -209,7 +216,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   },
 
   setActiveScene: async (id: string) => {
-    set({ activeSceneId: id, selectedShotId: null, selectedContainerId: null, loading: true });
+    set({ activeSceneId: id, selectedShotId: null, selectedContainerId: null, selectionKind: null, selectionId: null, loading: true });
     try {
       const [cams, ctrs, shots] = await Promise.all([
         api.fetchCameras(id),
@@ -227,8 +234,14 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     }
   },
 
-  selectShot: (id) => set({ selectedShotId: id, selectedContainerId: null }),
-  selectContainer: (id) => set({ selectedContainerId: id, selectedShotId: null }),
+  selectShot: (id) => set({ selectedShotId: id, selectedContainerId: null, selectionKind: id ? 'shot' : null, selectionId: id }),
+  selectContainer: (id) => set({ selectedContainerId: id, selectedShotId: null, selectionKind: id ? 'container' : null, selectionId: id }),
+  selectNode: (kind, id) => set({
+    selectionKind: id ? kind : null,
+    selectionId: id,
+    selectedShotId: kind === 'shot' ? id : null,
+    selectedContainerId: kind === 'container' ? id : null,
+  }),
 
   toggleContainer: (id) =>
     set((s) => ({

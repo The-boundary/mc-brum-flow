@@ -51,7 +51,7 @@ const CONTEXT_MENU_ITEMS = [
 ];
 
 export function NodeFlowView() {
-  const { shots, containers, cameras, sceneStates, selectedShotId, selectShot } = useFlowStore();
+  const { shots, containers, cameras, sceneStates, selectedShotId, selectNode } = useFlowStore();
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   // Build the set of node IDs in the selected shot's pipe
@@ -221,9 +221,9 @@ export function NodeFlowView() {
 
   // Click on background deselects
   const onPaneClick = useCallback(() => {
-    selectShot(null);
+    selectNode(null, null);
     setContextMenu(null);
-  }, [selectShot]);
+  }, [selectNode]);
 
   // Right-click context menu
   const onPaneContextMenu = useCallback((event: MouseEvent | React.MouseEvent) => {
