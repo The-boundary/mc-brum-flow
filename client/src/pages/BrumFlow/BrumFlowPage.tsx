@@ -1,11 +1,38 @@
-import { Workflow, List, PanelRightOpen, PanelRightClose } from 'lucide-react';
+import { useEffect } from 'react';
+import { Workflow, List, PanelRightOpen, PanelRightClose, Loader2 } from 'lucide-react';
 import { useUiStore } from '@/stores/uiStore';
+import { useFlowStore } from '@/stores/flowStore';
 import { NodeFlowView } from '@/components/flow/NodeFlowView';
 import { MatrixView } from '@/components/matrix/MatrixView';
 import { DetailPanel } from '@/components/detail/DetailPanel';
 
 export default function BrumFlowPage() {
   const { viewMode, setViewMode, detailPanelOpen, toggleDetailPanel } = useUiStore();
+  const { loading, error, loadAll, initSocket } = useFlowStore();
+
+  useEffect(() => {
+    loadAll();
+    initSocket();
+  }, [loadAll, initSocket]);
+
+  if (loading) {
+    return (
+      <div className="flex h-[calc(100vh-0px)] items-center justify-center">
+        <Loader2 className="w-5 h-5 animate-spin text-brand" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-[calc(100vh-0px)] items-center justify-center">
+        <div className="text-center space-y-2">
+          <p className="text-sm text-red-400">{error}</p>
+          <button onClick={loadAll} className="text-xs text-brand hover:underline">Retry</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-[calc(100vh-0px)] overflow-hidden">

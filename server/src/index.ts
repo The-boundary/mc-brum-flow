@@ -3,7 +3,9 @@ import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import path from 'path';
+import http from 'http';
 import { fileURLToPath } from 'url';
+import { Server as SocketServer } from 'socket.io';
 import { config } from './config.js';
 import { logger } from './utils/logger.js';
 import routes from './routes/index.js';
@@ -13,6 +15,16 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
+const server = http.createServer(app);
+
+// Socket.IO
+const io = new SocketServer(server, {
+  cors: { origin: config.corsOrigin === '*' ? true : config.corsOrigin, credentials: true },
+});
+
+// Make io available to routes
+app.set('io', io);
+
 app.set('trust proxy', true);
 
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -51,7 +63,15 @@ app.get('*', (req, res, next) => {
 app.use('/api', notFoundHandler);
 app.use(errorHandler);
 
-app.listen(config.port, () => {
+// Socket.IO events
+io.on('connection', (socket) => {
+  logger.info(`Socket connected: ${socket.id}`);
+  socket.on('disconnect', () => {
+    logger.info(`Socket disconnected: ${socket.id}`);
+  });
+});
+
+server.listen(config.port, () => {
   logger.info(`Brum Flow server running on http://localhost:${config.port}`);
   logger.info(`Environment: ${config.nodeEnv}`);
 });

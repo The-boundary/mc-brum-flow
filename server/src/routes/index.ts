@@ -2,8 +2,13 @@ import { Router, type Request, type Response } from 'express';
 import { dbQuery } from '../services/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 import { logger } from '../utils/logger.js';
+import type { Server as SocketServer } from 'socket.io';
 
 const router = Router();
+
+function getIO(req: Request): SocketServer {
+  return req.app.get('io') as SocketServer;
+}
 
 router.get('/health', async (_req, res) => {
   let database: 'not_configured' | 'ok' | 'error' = 'not_configured';
@@ -21,6 +26,7 @@ router.get('/health', async (_req, res) => {
 router.use(requireAuth);
 
 // ── Scene States ──
+
 router.get('/scene-states', async (_req: Request, res: Response) => {
   try {
     const result = await dbQuery('SELECT * FROM scene_states ORDER BY name');
@@ -31,29 +37,43 @@ router.get('/scene-states', async (_req: Request, res: Response) => {
   }
 });
 
-// ── Containers ──
-router.get('/containers', async (_req: Request, res: Response) => {
+router.post('/scene-states', async (req: Request, res: Response) => {
+  const { name, environment, lighting, render_passes, noise_threshold, denoiser, layers, render_elements, color } = req.body;
   try {
-    const result = await dbQuery('SELECT * FROM containers ORDER BY name');
-    res.json({ success: true, data: result.rows });
+    const result = await dbQuery(
+      `INSERT INTO scene_states (name, environment, lighting, render_passes, noise_threshold, denoiser, layers, render_elements, color)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [name, environment || '', lighting || '', render_passes || 20, noise_threshold || 0.2, denoiser || 'Intel OIDN', layers || '{}', render_elements || '{}', color || 'teal']
+    );
+    const row = result.rows[0];
+    getIO(req).emit('scene-state:created', row);
+    res.json({ success: true, data: row });
   } catch (err) {
-    logger.error({ err }, 'Failed to load containers');
-    res.status(500).json({ success: false, error: 'Failed to load containers' });
+    logger.error({ err }, 'Failed to create scene state');
+    res.status(500).json({ success: false, error: 'Failed to create scene state' });
   }
 });
 
-// ── Shots ──
-router.get('/shots', async (_req: Request, res: Response) => {
+router.put('/scene-states/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { name, environment, lighting, render_passes, noise_threshold, denoiser, layers, render_elements, color } = req.body;
   try {
-    const result = await dbQuery('SELECT * FROM shots ORDER BY name');
-    res.json({ success: true, data: result.rows });
+    const result = await dbQuery(
+      `UPDATE scene_states SET name=$1, environment=$2, lighting=$3, render_passes=$4, noise_threshold=$5, denoiser=$6, layers=$7, render_elements=$8, color=$9, updated_at=NOW()
+       WHERE id=$10 RETURNING *`,
+      [name, environment, lighting, render_passes, noise_threshold, denoiser, layers, render_elements, color, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Not found' });
+    getIO(req).emit('scene-state:updated', result.rows[0]);
+    res.json({ success: true, data: result.rows[0] });
   } catch (err) {
-    logger.error({ err }, 'Failed to load shots');
-    res.status(500).json({ success: false, error: 'Failed to load shots' });
+    logger.error({ err }, 'Failed to update scene state');
+    res.status(500).json({ success: false, error: 'Failed to update scene state' });
   }
 });
 
 // ── Cameras ──
+
 router.get('/cameras', async (_req: Request, res: Response) => {
   try {
     const result = await dbQuery('SELECT * FROM cameras ORDER BY name');
@@ -64,7 +84,124 @@ router.get('/cameras', async (_req: Request, res: Response) => {
   }
 });
 
-// ── Flow Config (node positions / edges for the node flow view) ──
+// ── Containers ──
+
+router.get('/containers', async (_req: Request, res: Response) => {
+  try {
+    const result = await dbQuery('SELECT * FROM containers ORDER BY sort_order, name');
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    logger.error({ err }, 'Failed to load containers');
+    res.status(500).json({ success: false, error: 'Failed to load containers' });
+  }
+});
+
+router.post('/containers', async (req: Request, res: Response) => {
+  const { name, parent_id, scene_state_id, output_path_template, sort_order } = req.body;
+  try {
+    const result = await dbQuery(
+      `INSERT INTO containers (name, parent_id, scene_state_id, output_path_template, sort_order)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [name, parent_id || null, scene_state_id, output_path_template || '/renders/{container}/{shot}/', sort_order || 0]
+    );
+    getIO(req).emit('container:created', result.rows[0]);
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    logger.error({ err }, 'Failed to create container');
+    res.status(500).json({ success: false, error: 'Failed to create container' });
+  }
+});
+
+router.put('/containers/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { name, parent_id, scene_state_id, output_path_template, sort_order } = req.body;
+  try {
+    const result = await dbQuery(
+      `UPDATE containers SET name=$1, parent_id=$2, scene_state_id=$3, output_path_template=$4, sort_order=$5, updated_at=NOW()
+       WHERE id=$6 RETURNING *`,
+      [name, parent_id, scene_state_id, output_path_template, sort_order, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Not found' });
+    getIO(req).emit('container:updated', result.rows[0]);
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    logger.error({ err }, 'Failed to update container');
+    res.status(500).json({ success: false, error: 'Failed to update container' });
+  }
+});
+
+router.delete('/containers/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    await dbQuery('DELETE FROM containers WHERE id=$1', [id]);
+    getIO(req).emit('container:deleted', { id });
+    res.json({ success: true });
+  } catch (err) {
+    logger.error({ err }, 'Failed to delete container');
+    res.status(500).json({ success: false, error: 'Failed to delete container' });
+  }
+});
+
+// ── Shots ──
+
+router.get('/shots', async (_req: Request, res: Response) => {
+  try {
+    const result = await dbQuery('SELECT * FROM shots ORDER BY sort_order, name');
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    logger.error({ err }, 'Failed to load shots');
+    res.status(500).json({ success: false, error: 'Failed to load shots' });
+  }
+});
+
+router.post('/shots', async (req: Request, res: Response) => {
+  const { name, container_id, camera_id, resolution_width, resolution_height, scene_state_id, overrides, output_path, output_format, enabled, sort_order } = req.body;
+  try {
+    const result = await dbQuery(
+      `INSERT INTO shots (name, container_id, camera_id, resolution_width, resolution_height, scene_state_id, overrides, output_path, output_format, enabled, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11) RETURNING *`,
+      [name, container_id, camera_id, resolution_width || 3840, resolution_height || 2160, scene_state_id || null, JSON.stringify(overrides || {}), output_path || '', output_format || 'EXR', enabled !== false, sort_order || 0]
+    );
+    getIO(req).emit('shot:created', result.rows[0]);
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    logger.error({ err }, 'Failed to create shot');
+    res.status(500).json({ success: false, error: 'Failed to create shot' });
+  }
+});
+
+router.put('/shots/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { name, container_id, camera_id, resolution_width, resolution_height, scene_state_id, overrides, output_path, output_format, enabled, sort_order } = req.body;
+  try {
+    const result = await dbQuery(
+      `UPDATE shots SET name=$1, container_id=$2, camera_id=$3, resolution_width=$4, resolution_height=$5, scene_state_id=$6, overrides=$7::jsonb, output_path=$8, output_format=$9, enabled=$10, sort_order=$11, updated_at=NOW()
+       WHERE id=$12 RETURNING *`,
+      [name, container_id, camera_id, resolution_width, resolution_height, scene_state_id, JSON.stringify(overrides || {}), output_path, output_format, enabled, sort_order, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Not found' });
+    getIO(req).emit('shot:updated', result.rows[0]);
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    logger.error({ err }, 'Failed to update shot');
+    res.status(500).json({ success: false, error: 'Failed to update shot' });
+  }
+});
+
+router.delete('/shots/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    await dbQuery('DELETE FROM shots WHERE id=$1', [id]);
+    getIO(req).emit('shot:deleted', { id });
+    res.json({ success: true });
+  } catch (err) {
+    logger.error({ err }, 'Failed to delete shot');
+    res.status(500).json({ success: false, error: 'Failed to delete shot' });
+  }
+});
+
+// ── Flow Config ──
+
 router.get('/flow-config', async (_req: Request, res: Response) => {
   try {
     const result = await dbQuery('SELECT nodes, edges, viewport FROM flow_configs LIMIT 1');
@@ -79,15 +216,12 @@ router.get('/flow-config', async (_req: Request, res: Response) => {
 router.post('/flow-config', async (req: Request, res: Response) => {
   const { nodes, edges, viewport } = req.body || {};
   try {
-    const nodesJson = JSON.stringify(nodes || []);
-    const edgesJson = JSON.stringify(edges || []);
-    const viewportJson = viewport ? JSON.stringify(viewport) : null;
     await dbQuery(
       `INSERT INTO flow_configs (id, nodes, edges, viewport)
        VALUES ('default', $1::jsonb, $2::jsonb, $3::jsonb)
        ON CONFLICT (id) DO UPDATE
          SET nodes = EXCLUDED.nodes, edges = EXCLUDED.edges, viewport = EXCLUDED.viewport, updated_at = NOW()`,
-      [nodesJson, edgesJson, viewportJson]
+      [JSON.stringify(nodes || []), JSON.stringify(edges || []), viewport ? JSON.stringify(viewport) : null]
     );
     res.json({ success: true });
   } catch (err) {

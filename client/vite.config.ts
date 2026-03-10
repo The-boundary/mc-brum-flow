@@ -39,6 +39,11 @@ export default defineConfig(({ mode }) => {
           target: `http://localhost:${backendPort}`,
           changeOrigin: true,
         },
+        '/socket.io': {
+          target: `http://localhost:${backendPort}`,
+          changeOrigin: true,
+          ws: true,
+        },
       },
     },
     build: {

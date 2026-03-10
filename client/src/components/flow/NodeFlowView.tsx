@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import {
   ReactFlow,
   Background,
@@ -151,6 +151,10 @@ export function NodeFlowView() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [flowEdges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  // Sync when store data changes (useNodesState only reads initial value once)
+  useEffect(() => { setNodes(initialNodes); }, [initialNodes, setNodes]);
+  useEffect(() => { setEdges(initialEdges); }, [initialEdges, setEdges]);
 
   const onConnect: OnConnect = useCallback(
     (params) => setEdges((eds) => addEdge({ ...params, style: { stroke: '#5acfd9' } }, eds)),
