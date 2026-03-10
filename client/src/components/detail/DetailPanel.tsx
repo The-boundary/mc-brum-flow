@@ -178,6 +178,49 @@ function SceneStateDetail() {
 
 // ── Resolution Detail ──
 
+const RESOLUTION_PRESETS: { label: string; ratio: string; resolutions: { w: number; h: number; label: string }[] }[] = [
+  {
+    label: '16:9', ratio: '16:9',
+    resolutions: [
+      { w: 1920, h: 1080, label: 'HD 1080p' },
+      { w: 2560, h: 1440, label: 'QHD 1440p' },
+      { w: 3840, h: 2160, label: '4K UHD' },
+      { w: 7680, h: 4320, label: '8K UHD' },
+    ],
+  },
+  {
+    label: '16:10', ratio: '16:10',
+    resolutions: [
+      { w: 1920, h: 1200, label: 'WUXGA' },
+      { w: 2560, h: 1600, label: 'WQXGA' },
+      { w: 3840, h: 2400, label: '4K+' },
+    ],
+  },
+  {
+    label: '2:1', ratio: '2:1',
+    resolutions: [
+      { w: 4096, h: 2048, label: '4K Pano' },
+      { w: 8192, h: 4096, label: '8K Pano' },
+    ],
+  },
+  {
+    label: '1:1', ratio: '1:1',
+    resolutions: [
+      { w: 2048, h: 2048, label: '2K Square' },
+      { w: 4096, h: 4096, label: '4K Square' },
+    ],
+  },
+  {
+    label: 'Arch Viz', ratio: 'Custom',
+    resolutions: [
+      { w: 5120, h: 2880, label: '5K' },
+      { w: 6000, h: 4000, label: '6K Photo' },
+      { w: 4000, h: 3000, label: '4:3 Print' },
+      { w: 5000, h: 2500, label: '2:1 Wide' },
+    ],
+  },
+];
+
 function ResolutionDetail() {
   const { selectionId, shots } = useFlowStore();
   if (!selectionId) return <EmptyPanel />;
@@ -200,6 +243,32 @@ function ResolutionDetail() {
           <div className="flex justify-between"><span className="text-fg-dim">Aspect Ratio</span><span className="text-foreground">{w / aspectRatio}:{h / aspectRatio}</span></div>
           <div className="flex justify-between"><span className="text-fg-dim">Megapixels</span><span className="text-foreground">{((w * h) / 1_000_000).toFixed(1)} MP</span></div>
         </div>
+      </Section>
+
+      <Section title="Presets">
+        {RESOLUTION_PRESETS.map((group) => (
+          <div key={group.label} className="mb-3">
+            <div className="text-[10px] text-fg-dim font-medium mb-1.5">{group.label}</div>
+            <div className="flex flex-wrap gap-1">
+              {group.resolutions.map((res) => {
+                const isActive = res.w === w && res.h === h;
+                return (
+                  <button
+                    key={`${res.w}x${res.h}`}
+                    className={`px-2 py-1 rounded text-[10px] border transition-colors ${
+                      isActive
+                        ? 'bg-green-400/15 border-green-400/40 text-green-400'
+                        : 'bg-surface-300 border-border text-fg-muted hover:border-green-400/30 hover:text-foreground'
+                    }`}
+                    title={`${res.w} × ${res.h}`}
+                  >
+                    {res.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </Section>
 
       <Section title={`Used by ${matchingShots.length} shot${matchingShots.length !== 1 ? 's' : ''}`}>
