@@ -1,0 +1,75 @@
+@import "tailwindcss";
+@import '@the-boundary/design-system/base-vars.css';
+@source "../../node_modules/@the-boundary/design-system/dist/index.js";
+
+/* ── Brum Flow Theme ── */
+
+@theme {
+  --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Space Grotesk', var(--font-sans);
+  --radius: 0.625rem;
+
+  /* Core palette */
+  --color-background: hsl(180 11% 7%);
+  --color-foreground: hsl(180 31% 94%);
+  --color-muted: hsl(195 19% 13%);
+  --color-muted-foreground: hsl(221 15% 65%);
+
+  /* Surfaces */
+  --color-surface-75: hsl(180 8% 9%);
+  --color-surface-100: hsl(195 19% 13%);
+  --color-surface-200: hsl(180 7% 12%);
+  --color-surface-300: hsl(198 13% 15%);
+  --color-surface-400: hsl(190 12% 20%);
+
+  /* Borders */
+  --color-border: hsl(190 12% 20%);
+  --color-border-strong: hsl(190 14% 28%);
+  --color-border-muted: hsl(190 10% 16%);
+
+  /* Brand / accent */
+  --color-brand: hsl(185 63% 60%);
+  --color-brand-500: hsl(185 53% 50%);
+  --color-brand-600: hsl(185 55% 40%);
+
+  /* Status */
+  --color-success: hsl(142 71% 45%);
+  --color-warning: hsl(38 92% 50%);
+  --color-error: hsl(0 84% 60%);
+  --color-info: hsl(217 91% 60%);
+
+  /* Text dims */
+  --color-fg-dim: hsl(220 10% 42%);
+  --color-fg-muted: hsl(221 15% 65%);
+}
+
+/* Aurora gradient background */
+body {
+  background:
+    radial-gradient(circle at 12% 24%, rgba(90,207,217,0.2), transparent 28%),
+    radial-gradient(circle at 78% 12%, rgba(43,99,100,0.24), transparent 26%),
+    linear-gradient(140deg, #121414, #171d1e 55%, #0f1315);
+  background-attachment: fixed;
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+}
+
+/* Glass panel effect */
+.glass-panel {
+  background: linear-gradient(135deg, hsla(195, 19%, 13%, 0.85), hsla(180, 7%, 12%, 0.75));
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--color-border);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-400);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-brand-600); }
+
+/* React Flow overrides */
+.react-flow__node { font-family: var(--font-sans); }
+.react-flow__attribution { display: none; }
