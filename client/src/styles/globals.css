@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import '@the-boundary/design-system/base-vars.css';
-@source "../../node_modules/@the-boundary/design-system/dist/index.js";
+@source "../../../node_modules/@the-boundary/design-system/dist/index.js";
 
 /* ── Brum Flow Theme ── */
 
@@ -41,6 +41,67 @@
   /* Text dims */
   --color-fg-dim: hsl(220 10% 42%);
   --color-fg-muted: hsl(221 15% 65%);
+
+}
+
+/*
+ * Design system component variables (shadcn/ui HSL format).
+ * MissionControlSidebar, cards, popovers etc. reference these
+ * via hsl(var(--sidebar-background)) internally.
+ */
+.dark, :root {
+  --background: #101414;
+  --foreground: #eaf4f4;
+  --card: rgba(29, 33, 33, 0.78);
+  --card-foreground: #eaf4f4;
+  --popover: #1a2326;
+  --popover-foreground: #eaf4f4;
+  --primary: #5acfd9;
+  --primary-foreground: #0f1315;
+  --secondary: #1d2121;
+  --secondary-foreground: #eaf4f4;
+  --muted: #22292c;
+  --muted-foreground: #98a2b3;
+  --accent: rgba(60, 182, 194, 0.12);
+  --accent-foreground: #5acfd9;
+  --destructive: #f04438;
+  --destructive-foreground: #ffffff;
+  --border: #2d3739;
+  --input: #2d3739;
+  --ring: #5acfd9;
+
+  /* Sidebar */
+  --sidebar-background: #101414;
+  --sidebar-foreground: #eaf4f4;
+  --sidebar-primary: #5acfd9;
+  --sidebar-primary-foreground: #0f1315;
+  --sidebar-accent: rgba(60, 182, 194, 0.12);
+  --sidebar-accent-foreground: #5acfd9;
+  --sidebar-border: #2d3739;
+  --sidebar-ring: #5acfd9;
+
+  /* Surface variations */
+  --surface-75: rgba(16, 20, 21, 0.6);
+  --surface-100: #1a2326;
+  --surface-200: #1d2121;
+  --surface-300: #22292c;
+  --surface-400: #2d3739;
+  --surface-glass: rgba(16, 20, 21, 0.6);
+  --surface-contrast: rgba(29, 33, 33, 0.78);
+
+  --border-strong: #475467;
+  --border-stronger: #667085;
+  --border-muted: #22292c;
+  --brand: #5acfd9;
+  --brand-500: #3cb6c2;
+  --brand-darker: #2b7a7c;
+
+  --success: #12b76a;
+  --warning: #f79009;
+  --error: #f04438;
+  --info: #0ba5ec;
+
+  color-scheme: dark;
 }
 
 /* Aurora gradient background */
@@ -52,13 +113,19 @@ body {
   background-attachment: fixed;
   color: var(--color-foreground);
   font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  border-color: var(--border);
 }
 
 /* Glass panel effect */
 .glass-panel {
-  background: linear-gradient(135deg, hsla(195, 19%, 13%, 0.85), hsla(180, 7%, 12%, 0.75));
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--color-border);
+  background: rgba(16, 20, 21, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 /* Scrollbar */
@@ -70,6 +137,45 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-brand-600); }
 
-/* React Flow overrides */
-.react-flow__node { font-family: var(--font-sans); }
+/*
+ * Design system sb-* utility overrides.
+ * The design system was built with Tailwind v3 preset colors (sb-bg, sb-border, etc.)
+ * that don't exist natively in Tailwind v4. Map them to our CSS variables here.
+ */
+.bg-sb-bg { background-color: var(--background) !important; }
+.bg-sb-surface-75 { background-color: var(--surface-75) !important; }
+.bg-sb-surface-100 { background-color: var(--surface-100) !important; }
+.bg-sb-surface-200 { background-color: var(--surface-200) !important; }
+.bg-sb-surface-300 { background-color: var(--surface-300) !important; }
+.bg-sb-surface-400 { background-color: var(--surface-400) !important; }
+.text-sb-text { color: var(--foreground) !important; }
+.text-sb-text-muted { color: var(--muted-foreground) !important; }
+.text-sb-brand { color: var(--brand) !important; }
+.text-sb-brand-500 { color: var(--brand-500) !important; }
+.border-sb-border { border-color: var(--border) !important; }
+.border-sb-border\/80 { border-color: color-mix(in srgb, var(--border) 80%, transparent) !important; }
+.border-sb-border-strong { border-color: var(--border-strong) !important; }
+.bg-sb-brand-500 { background-color: var(--brand-500) !important; }
+.hover\:bg-sb-surface-300:hover { background-color: var(--surface-300) !important; }
+.hover\:bg-sb-surface-200:hover { background-color: var(--surface-200) !important; }
+.hover\:bg-sb-surface-400:hover { background-color: var(--surface-400) !important; }
+.hover\:bg-sb-brand-500\/80:hover { background-color: color-mix(in srgb, var(--brand-500) 80%, transparent) !important; }
+.hover\:border-sb-brand:hover { border-color: var(--brand) !important; }
+.hover\:glow-brand:hover { box-shadow: 0 0 20px rgba(90, 207, 217, 0.3) !important; }
+.bg-sb-surface-200\/40 { background-color: color-mix(in srgb, var(--surface-200) 40%, transparent) !important; }
+.shadow-sb-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.5) !important; }
+.shadow-sb-md { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.5) !important; }
+.focus-visible\:ring-sb-brand:focus-visible { --tw-ring-color: var(--brand) !important; }
+.ring-offset-sb-bg { --tw-ring-offset-color: var(--background) !important; }
+.active\:bg-sb-brand-500\/70:active { background-color: color-mix(in srgb, var(--brand-500) 70%, transparent) !important; }
+.border-sb-brand\/30 { border-color: color-mix(in srgb, var(--brand) 30%, transparent) !important; }
+
+/* React Flow overrides — remove default white node backgrounds */
+.react-flow__node {
+  font-family: var(--font-sans);
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
 .react-flow__attribution { display: none; }

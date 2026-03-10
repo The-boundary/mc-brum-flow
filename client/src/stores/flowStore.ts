@@ -3,6 +3,14 @@ import * as api from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 
 // DB row types (snake_case from Postgres)
+interface DbScene {
+  id: string;
+  name: string;
+  file_path: string;
+  instance_host: string;
+  is_active: boolean;
+}
+
 interface DbSceneState {
   id: string;
   name: string;
@@ -29,6 +37,7 @@ interface DbContainer {
   scene_state_id: string;
   output_path_template: string;
   sort_order: number;
+  scene_id: string;
 }
 
 interface DbShot {
@@ -47,6 +56,14 @@ interface DbShot {
 }
 
 // Client-side types (camelCase for convenience)
+export interface Scene {
+  id: string;
+  name: string;
+  filePath: string;
+  instanceHost: string;
+  isActive: boolean;
+}
+
 export interface SceneState {
   id: string;
   name: string;
@@ -73,6 +90,7 @@ export interface Container {
   sceneStateId: string;
   outputPathTemplate: string;
   sortOrder: number;
+  sceneId: string;
   expanded: boolean;
 }
 
@@ -92,6 +110,9 @@ export interface Shot {
 }
 
 // Mappers
+function mapScene(r: DbScene): Scene {
+  return { id: r.id, name: r.name, filePath: r.file_path, instanceHost: r.instance_host, isActive: r.is_active };
+}
 function mapState(r: DbSceneState): SceneState {
   return { id: r.id, name: r.name, environment: r.environment, lighting: r.lighting, renderPasses: r.render_passes, noiseThreshold: r.noise_threshold, denoiser: r.denoiser, layers: r.layers, renderElements: r.render_elements, color: r.color };
 }
@@ -99,7 +120,7 @@ function mapCamera(r: DbCamera): Camera {
   return { id: r.id, name: r.name, fov: r.fov };
 }
 function mapContainer(r: DbContainer): Container {
-  return { id: r.id, name: r.name, parentId: r.parent_id, sceneStateId: r.scene_state_id, outputPathTemplate: r.output_path_template, sortOrder: r.sort_order, expanded: true };
+  return { id: r.id, name: r.name, parentId: r.parent_id, sceneStateId: r.scene_state_id, outputPathTemplate: r.output_path_template, sortOrder: r.sort_order, sceneId: r.scene_id, expanded: true };
 }
 function mapShot(r: DbShot): Shot {
   return { id: r.id, name: r.name, containerId: r.container_id, cameraId: r.camera_id, resolutionWidth: r.resolution_width, resolutionHeight: r.resolution_height, sceneStateId: r.scene_state_id, overrides: r.overrides || {}, outputPath: r.output_path, outputFormat: r.output_format, enabled: r.enabled, sortOrder: r.sort_order };
@@ -110,10 +131,12 @@ function toDbShot(s: Shot): DbShot {
   return { id: s.id, name: s.name, container_id: s.containerId, camera_id: s.cameraId, resolution_width: s.resolutionWidth, resolution_height: s.resolutionHeight, scene_state_id: s.sceneStateId, overrides: s.overrides, output_path: s.outputPath, output_format: s.outputFormat, enabled: s.enabled, sort_order: s.sortOrder };
 }
 function toDbContainer(c: Container): Omit<DbContainer, 'expanded'> {
-  return { id: c.id, name: c.name, parent_id: c.parentId, scene_state_id: c.sceneStateId, output_path_template: c.outputPathTemplate, sort_order: c.sortOrder };
+  return { id: c.id, name: c.name, parent_id: c.parentId, scene_state_id: c.sceneStateId, output_path_template: c.outputPathTemplate, sort_order: c.sortOrder, scene_id: c.sceneId };
 }
 
 interface FlowState {
+  scenes: Scene[];
+  activeSceneId: string | null;
   shots: Shot[];
   containers: Container[];
   sceneStates: SceneState[];
@@ -127,6 +150,7 @@ interface FlowState {
 
   // Actions
   loadAll: () => Promise<void>;
+  setActiveScene: (id: string) => void;
   selectShot: (id: string | null) => void;
   selectContainer: (id: string | null) => void;
   toggleContainer: (id: string) => void;
@@ -144,6 +168,8 @@ interface FlowState {
 }
 
 export const useFlowStore = create<FlowState>()((set, get) => ({
+  scenes: [],
+  activeSceneId: null,
   shots: [],
   containers: [],
   sceneStates: [],
@@ -156,13 +182,21 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   loadAll: async () => {
     set({ loading: true, error: null });
     try {
+      // Load scenes first
+      const scenes = await api.fetchScenes();
+      const mappedScenes = scenes.map(mapScene);
+      const activeId = mappedScenes[0]?.id ?? null;
+
+      // Load scene-specific data
       const [states, cams, ctrs, shots] = await Promise.all([
         api.fetchSceneStates(),
-        api.fetchCameras(),
-        api.fetchContainers(),
-        api.fetchShots(),
+        api.fetchCameras(activeId ?? undefined),
+        api.fetchContainers(activeId ?? undefined),
+        api.fetchShots(activeId ?? undefined),
       ]);
       set({
+        scenes: mappedScenes,
+        activeSceneId: activeId,
         sceneStates: states.map(mapState),
         cameras: cams.map(mapCamera),
         containers: ctrs.map(mapContainer),
@@ -171,6 +205,25 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
       });
     } catch (err) {
       set({ loading: false, error: err instanceof Error ? err.message : 'Failed to load data' });
+    }
+  },
+
+  setActiveScene: async (id: string) => {
+    set({ activeSceneId: id, selectedShotId: null, selectedContainerId: null, loading: true });
+    try {
+      const [cams, ctrs, shots] = await Promise.all([
+        api.fetchCameras(id),
+        api.fetchContainers(id),
+        api.fetchShots(id),
+      ]);
+      set({
+        cameras: cams.map(mapCamera),
+        containers: ctrs.map(mapContainer),
+        shots: shots.map(mapShot),
+        loading: false,
+      });
+    } catch (err) {
+      set({ loading: false, error: err instanceof Error ? err.message : 'Failed to load scene' });
     }
   },
 
@@ -284,6 +337,20 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     });
     socket.on('scene-state:updated', (row: DbSceneState) => {
       set((s) => ({ sceneStates: s.sceneStates.map((st) => (st.id === row.id ? mapState(row) : st)) }));
+    });
+
+    socket.on('scene:created', (row: DbScene) => {
+      set((s) => ({ scenes: [...s.scenes.filter((sc) => sc.id !== row.id), mapScene(row)] }));
+    });
+    socket.on('scene:deleted', ({ id }: { id: string }) => {
+      set((s) => {
+        const remaining = s.scenes.filter((sc) => sc.id !== id);
+        const needSwitch = s.activeSceneId === id;
+        return {
+          scenes: remaining,
+          activeSceneId: needSwitch ? (remaining[0]?.id ?? null) : s.activeSceneId,
+        };
+      });
     });
   },
 }));

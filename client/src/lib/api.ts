@@ -14,27 +14,36 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return (json as any).data ?? json;
 }
 
+// Scenes
+export const fetchScenes = () => request<any[]>('/scenes');
+export const createScene = (data: any) => request<any>('/scenes', { method: 'POST', body: JSON.stringify(data) });
+export const deleteScene = (id: string) => request<void>(`/scenes/${id}`, { method: 'DELETE' });
+
 // Scene States
 export const fetchSceneStates = () => request<any[]>('/scene-states');
 export const createSceneState = (data: any) => request<any>('/scene-states', { method: 'POST', body: JSON.stringify(data) });
 export const updateSceneState = (id: string, data: any) => request<any>(`/scene-states/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 
 // Cameras
-export const fetchCameras = () => request<any[]>('/cameras');
+export const fetchCameras = (sceneId?: string) =>
+  request<any[]>(sceneId ? `/cameras?scene_id=${sceneId}` : '/cameras');
 
 // Containers
-export const fetchContainers = () => request<any[]>('/containers');
+export const fetchContainers = (sceneId?: string) =>
+  request<any[]>(sceneId ? `/containers?scene_id=${sceneId}` : '/containers');
 export const createContainer = (data: any) => request<any>('/containers', { method: 'POST', body: JSON.stringify(data) });
 export const updateContainer = (id: string, data: any) => request<any>(`/containers/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 export const deleteContainer = (id: string) => request<void>(`/containers/${id}`, { method: 'DELETE' });
 
 // Shots
-export const fetchShots = () => request<any[]>('/shots');
+export const fetchShots = (sceneId?: string) =>
+  request<any[]>(sceneId ? `/shots?scene_id=${sceneId}` : '/shots');
 export const createShot = (data: any) => request<any>('/shots', { method: 'POST', body: JSON.stringify(data) });
 export const updateShot = (id: string, data: any) => request<any>(`/shots/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 export const deleteShot = (id: string) => request<void>(`/shots/${id}`, { method: 'DELETE' });
 
 // Flow Config
-export const fetchFlowConfig = () => request<any>('/flow-config');
+export const fetchFlowConfig = (sceneId?: string) =>
+  request<any>(sceneId ? `/flow-config?scene_id=${sceneId}` : '/flow-config');
 export const saveFlowConfig = (data: { nodes: any[]; edges: any[]; viewport?: any }) =>
   request<void>('/flow-config', { method: 'POST', body: JSON.stringify(data) });

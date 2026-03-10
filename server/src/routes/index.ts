@@ -25,6 +25,45 @@ router.get('/health', async (_req, res) => {
 // All routes below require auth
 router.use(requireAuth);
 
+// ── Scenes (3ds Max instances) ──
+
+router.get('/scenes', async (_req: Request, res: Response) => {
+  try {
+    const result = await dbQuery('SELECT * FROM scenes ORDER BY created_at');
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    logger.error({ err }, 'Failed to load scenes');
+    res.status(500).json({ success: false, error: 'Failed to load scenes' });
+  }
+});
+
+router.post('/scenes', async (req: Request, res: Response) => {
+  const { name, file_path, instance_host } = req.body;
+  try {
+    const result = await dbQuery(
+      `INSERT INTO scenes (name, file_path, instance_host) VALUES ($1,$2,$3) RETURNING *`,
+      [name, file_path || '', instance_host || '']
+    );
+    getIO(req).emit('scene:created', result.rows[0]);
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    logger.error({ err }, 'Failed to create scene');
+    res.status(500).json({ success: false, error: 'Failed to create scene' });
+  }
+});
+
+router.delete('/scenes/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    await dbQuery('DELETE FROM scenes WHERE id=$1', [id]);
+    getIO(req).emit('scene:deleted', { id });
+    res.json({ success: true });
+  } catch (err) {
+    logger.error({ err }, 'Failed to delete scene');
+    res.status(500).json({ success: false, error: 'Failed to delete scene' });
+  }
+});
+
 // ── Scene States ──
 
 router.get('/scene-states', async (_req: Request, res: Response) => {
@@ -74,9 +113,12 @@ router.put('/scene-states/:id', async (req: Request, res: Response) => {
 
 // ── Cameras ──
 
-router.get('/cameras', async (_req: Request, res: Response) => {
+router.get('/cameras', async (req: Request, res: Response) => {
+  const sceneId = req.query.scene_id as string | undefined;
   try {
-    const result = await dbQuery('SELECT * FROM cameras ORDER BY name');
+    const result = sceneId
+      ? await dbQuery('SELECT * FROM cameras WHERE scene_id=$1 ORDER BY name', [sceneId])
+      : await dbQuery('SELECT * FROM cameras ORDER BY name');
     res.json({ success: true, data: result.rows });
   } catch (err) {
     logger.error({ err }, 'Failed to load cameras');
@@ -86,9 +128,12 @@ router.get('/cameras', async (_req: Request, res: Response) => {
 
 // ── Containers ──
 
-router.get('/containers', async (_req: Request, res: Response) => {
+router.get('/containers', async (req: Request, res: Response) => {
+  const sceneId = req.query.scene_id as string | undefined;
   try {
-    const result = await dbQuery('SELECT * FROM containers ORDER BY sort_order, name');
+    const result = sceneId
+      ? await dbQuery('SELECT * FROM containers WHERE scene_id=$1 ORDER BY sort_order, name', [sceneId])
+      : await dbQuery('SELECT * FROM containers ORDER BY sort_order, name');
     res.json({ success: true, data: result.rows });
   } catch (err) {
     logger.error({ err }, 'Failed to load containers');
@@ -144,9 +189,15 @@ router.delete('/containers/:id', async (req: Request, res: Response) => {
 
 // ── Shots ──
 
-router.get('/shots', async (_req: Request, res: Response) => {
+router.get('/shots', async (req: Request, res: Response) => {
+  const sceneId = req.query.scene_id as string | undefined;
   try {
-    const result = await dbQuery('SELECT * FROM shots ORDER BY sort_order, name');
+    const result = sceneId
+      ? await dbQuery(
+          `SELECT s.* FROM shots s JOIN containers c ON s.container_id = c.id WHERE c.scene_id=$1 ORDER BY s.sort_order, s.name`,
+          [sceneId]
+        )
+      : await dbQuery('SELECT * FROM shots ORDER BY sort_order, name');
     res.json({ success: true, data: result.rows });
   } catch (err) {
     logger.error({ err }, 'Failed to load shots');
@@ -202,9 +253,12 @@ router.delete('/shots/:id', async (req: Request, res: Response) => {
 
 // ── Flow Config ──
 
-router.get('/flow-config', async (_req: Request, res: Response) => {
+router.get('/flow-config', async (req: Request, res: Response) => {
+  const sceneId = req.query.scene_id as string | undefined;
   try {
-    const result = await dbQuery('SELECT nodes, edges, viewport FROM flow_configs LIMIT 1');
+    const result = sceneId
+      ? await dbQuery('SELECT nodes, edges, viewport FROM flow_configs WHERE scene_id=$1 LIMIT 1', [sceneId])
+      : await dbQuery('SELECT nodes, edges, viewport FROM flow_configs LIMIT 1');
     const row = result.rows[0] || { nodes: [], edges: [], viewport: null };
     res.json({ success: true, data: row });
   } catch (err) {

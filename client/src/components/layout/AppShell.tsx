@@ -14,6 +14,7 @@ export function AppShell({ children }: AppShellProps) {
     <MissionControlAppShell
       sidebar={<Sidebar />}
       collapsed={sidebarCollapsed}
+      contentClassName="!max-w-none !p-0"
     >
       {children}
     </MissionControlAppShell>

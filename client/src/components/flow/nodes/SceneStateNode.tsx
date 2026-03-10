@@ -9,11 +9,11 @@ const COLOR_MAP: Record<string, string> = {
   purple: 'text-purple-400 border-purple-400/30 bg-purple-400/5',
 };
 
-export const SceneStateNode = memo(({ data }: { data: { label: string; stateId: string; color: string } }) => {
+export const SceneStateNode = memo(({ data }: { data: { label: string; stateId: string; color: string; dimmed?: boolean } }) => {
   const colors = COLOR_MAP[data.color] ?? COLOR_MAP.teal;
 
   return (
-    <div className={`rounded-lg border px-3 py-2 min-w-[140px] ${colors}`}>
+    <div className={`rounded-lg border px-3 py-2 min-w-[140px] transition-all ${colors} ${data.dimmed ? 'opacity-35' : ''}`}>
       <div className="flex items-center gap-2">
         <Palette className="w-3.5 h-3.5" />
         <span className="text-xs font-medium truncate">{data.label}</span>

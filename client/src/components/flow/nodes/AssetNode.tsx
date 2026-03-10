@@ -3,7 +3,7 @@ import { Handle, Position } from '@xyflow/react';
 import { Box } from 'lucide-react';
 import { useFlowStore } from '@/stores/flowStore';
 
-export const AssetNode = memo(({ data, id }: { data: { label: string; shotId: string; containerName: string }; id: string }) => {
+export const AssetNode = memo(({ data, id }: { data: { label: string; shotId: string; containerName: string; dimmed?: boolean }; id: string }) => {
   const selectShot = useFlowStore((s) => s.selectShot);
   const selectedShotId = useFlowStore((s) => s.selectedShotId);
   const isSelected = selectedShotId === data.shotId;
@@ -13,6 +13,8 @@ export const AssetNode = memo(({ data, id }: { data: { label: string; shotId: st
       className={`rounded-lg border px-3 py-2 min-w-[160px] cursor-pointer transition-all ${
         isSelected
           ? 'border-brand bg-brand/10 shadow-[0_0_12px_rgba(90,207,217,0.2)]'
+          : data.dimmed
+          ? 'border-border/40 bg-surface-200/40 opacity-35'
           : 'border-border bg-surface-200 hover:border-brand/50'
       }`}
       onClick={() => selectShot(data.shotId)}
