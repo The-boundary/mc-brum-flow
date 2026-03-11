@@ -1,6 +1,8 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { dbQuery } from '../services/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
+import { pushConfigToMax } from '../services/tcp-bridge.js';
+import { submitDeadlineJob } from '../services/deadline.js';
 
 const router = Router();
 
@@ -273,6 +275,163 @@ router.post('/resolve-paths', async (req: Request, res: Response, next: NextFunc
     }
 
     res.json({ success: true, data: { paths, count: paths.length } });
+  } catch (e) { next(e); }
+});
+
+// ── Push to Max ──
+
+router.post('/push-to-max', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scene_id, path_index } = req.body;
+    if (!scene_id || path_index === undefined) {
+      return res.status(400).json({ success: false, error: 'scene_id and path_index required' });
+    }
+
+    // Resolve paths server-side
+    const [flowResult, configsResult, camerasResult, defaultsResult, sceneResult] = await Promise.all([
+      dbQuery('SELECT * FROM flow_configs WHERE scene_id = $1', [scene_id]),
+      dbQuery('SELECT * FROM node_configs'),
+      dbQuery('SELECT * FROM cameras WHERE scene_id = $1', [scene_id]),
+      dbQuery('SELECT * FROM studio_defaults'),
+      dbQuery('SELECT * FROM scenes WHERE id = $1', [scene_id]),
+    ]);
+
+    const flow = flowResult.rows[0];
+    if (!flow) return res.status(404).json({ success: false, error: 'No flow config found' });
+
+    // Quick DFS to find the specific path
+    const nodes: Record<string, any> = {};
+    for (const n of flow.nodes) nodes[n.id] = n;
+    const configs: Record<string, any> = {};
+    for (const c of configsResult.rows) configs[c.id] = c;
+    const cameras: Record<string, any> = {};
+    for (const c of camerasResult.rows) cameras[c.id] = c;
+    const defaults: Record<string, any> = {};
+    for (const d of defaultsResult.rows) defaults[d.category] = d.settings;
+
+    const adj: Record<string, string[]> = {};
+    for (const edge of flow.edges) {
+      if (!adj[edge.source]) adj[edge.source] = [];
+      adj[edge.source].push(edge.target);
+    }
+
+    const cameraNodes = flow.nodes.filter((n: any) => n.type === 'camera');
+    const paths: any[] = [];
+
+    function dfs(nodeId: string, path: string[]) {
+      const node = nodes[nodeId];
+      if (!node) return;
+      path.push(nodeId);
+      if (node.type === 'output') {
+        const resolvedConfig = { ...defaults };
+        let cameraName = '';
+        for (const nid of path) {
+          const n = nodes[nid];
+          if (n.type === 'camera' && n.camera_id) cameraName = cameras[n.camera_id]?.name ?? n.label;
+          if (n.config_id && configs[n.config_id]) Object.assign(resolvedConfig, configs[n.config_id].delta);
+        }
+        paths.push({ cameraName, resolvedConfig });
+      }
+      for (const next of adj[nodeId] ?? []) dfs(next, [...path]);
+    }
+    for (const cam of cameraNodes) dfs(cam.id, []);
+
+    if (path_index >= paths.length) {
+      return res.status(400).json({ success: false, error: `Path index ${path_index} out of range (${paths.length} paths)` });
+    }
+
+    const targetPath = paths[path_index];
+    const result = await pushConfigToMax({
+      cameraName: targetPath.cameraName,
+      resolvedConfig: targetPath.resolvedConfig,
+    });
+
+    res.json({ success: true, data: { message: result } });
+  } catch (e) { next(e); }
+});
+
+// ── Submit Render ──
+
+router.post('/submit-render', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scene_id, path_indices } = req.body;
+    if (!scene_id || !Array.isArray(path_indices)) {
+      return res.status(400).json({ success: false, error: 'scene_id and path_indices[] required' });
+    }
+
+    // Resolve paths
+    const [flowResult, configsResult, camerasResult, defaultsResult, sceneResult] = await Promise.all([
+      dbQuery('SELECT * FROM flow_configs WHERE scene_id = $1', [scene_id]),
+      dbQuery('SELECT * FROM node_configs'),
+      dbQuery('SELECT * FROM cameras WHERE scene_id = $1', [scene_id]),
+      dbQuery('SELECT * FROM studio_defaults'),
+      dbQuery('SELECT * FROM scenes WHERE id = $1', [scene_id]),
+    ]);
+
+    const flow = flowResult.rows[0];
+    const scene = sceneResult.rows[0];
+    if (!flow || !scene) return res.status(404).json({ success: false, error: 'Scene or flow not found' });
+
+    const nodes: Record<string, any> = {};
+    for (const n of flow.nodes) nodes[n.id] = n;
+    const configs: Record<string, any> = {};
+    for (const c of configsResult.rows) configs[c.id] = c;
+    const cameras: Record<string, any> = {};
+    for (const c of camerasResult.rows) cameras[c.id] = c;
+    const defaults: Record<string, any> = {};
+    for (const d of defaultsResult.rows) defaults[d.category] = d.settings;
+
+    const adj: Record<string, string[]> = {};
+    for (const edge of flow.edges) {
+      if (!adj[edge.source]) adj[edge.source] = [];
+      adj[edge.source].push(edge.target);
+    }
+
+    const cameraNodes = flow.nodes.filter((n: any) => n.type === 'camera');
+    const paths: any[] = [];
+
+    function dfs(nodeId: string, path: string[]) {
+      const node = nodes[nodeId];
+      if (!node) return;
+      path.push(nodeId);
+      if (node.type === 'output') {
+        const segments: string[] = [];
+        let cameraName = '';
+        let revLabel = '';
+        const resolvedConfig = { ...defaults };
+        for (const nid of path) {
+          const n = nodes[nid];
+          if (n.type === 'camera' && n.camera_id) cameraName = cameras[n.camera_id]?.name ?? n.label;
+          if (n.type === 'group') segments.push(n.label);
+          if (n.type === 'stageRev') revLabel = n.label;
+          if (n.config_id && configs[n.config_id]) Object.assign(resolvedConfig, configs[n.config_id].delta);
+        }
+        const format = (resolvedConfig.format as string) ?? 'EXR';
+        const filename = [...segments, cameraName, revLabel].filter(Boolean).join(' - ') + '.' + format.toLowerCase();
+        const enabled = nodes[path[path.length - 1]]?.enabled !== false;
+        paths.push({ cameraName, filename, resolvedConfig, enabled });
+      }
+      for (const next of adj[nodeId] ?? []) dfs(next, [...path]);
+    }
+    for (const cam of cameraNodes) dfs(cam.id, []);
+
+    const jobIds: { jobId: string }[] = [];
+    for (const idx of path_indices) {
+      if (idx >= paths.length) continue;
+      const p = paths[idx];
+      if (!p.enabled) continue;
+      const result = await submitDeadlineJob({
+        jobName: p.filename.replace(/\.[^.]+$/, ''),
+        scenePath: scene.file_path,
+        cameraName: p.cameraName,
+        outputPath: `/renders/${scene.name}/${p.filename}`,
+        outputFormat: (p.resolvedConfig.format as string) ?? 'EXR',
+        resolvedConfig: p.resolvedConfig,
+      });
+      jobIds.push(result);
+    }
+
+    res.json({ success: true, data: { submitted: jobIds.length, jobs: jobIds } });
   } catch (e) { next(e); }
 });
 
