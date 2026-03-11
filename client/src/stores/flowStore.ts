@@ -1,369 +1,334 @@
 import { create } from 'zustand';
 import * as api from '@/lib/api';
 import { getSocket } from '@/lib/socket';
+import type { Scene, Camera, StudioDefault, NodeConfig, FlowNode, FlowEdge, NodeType } from '@shared/types';
+import { isValidConnection } from '@shared/types';
 
-// DB row types (snake_case from Postgres)
-interface DbScene {
-  id: string;
-  name: string;
-  file_path: string;
-  instance_host: string;
-  is_active: boolean;
-}
-
-interface DbSceneState {
-  id: string;
-  name: string;
-  environment: string;
-  lighting: string;
-  render_passes: number;
-  noise_threshold: number;
-  denoiser: string;
-  layers: string[];
-  render_elements: string[];
-  color: string;
-}
-
-interface DbCamera {
-  id: string;
-  name: string;
-  fov?: number;
-}
-
-interface DbContainer {
-  id: string;
-  name: string;
-  parent_id: string | null;
-  scene_state_id: string;
-  output_path_template: string;
-  sort_order: number;
-  scene_id: string;
-}
-
-interface DbShot {
-  id: string;
-  name: string;
-  container_id: string;
-  camera_id: string;
-  resolution_width: number;
-  resolution_height: number;
-  scene_state_id: string | null;
-  overrides: Record<string, unknown>;
-  output_path: string;
-  output_format: string;
+export interface ResolvedPath {
+  nodeIds: string[];
+  cameraName: string;
+  filename: string;
+  resolvedConfig: Record<string, unknown>;
   enabled: boolean;
-  sort_order: number;
 }
-
-// Client-side types (camelCase for convenience)
-export interface Scene {
-  id: string;
-  name: string;
-  filePath: string;
-  instanceHost: string;
-  isActive: boolean;
-}
-
-export interface SceneState {
-  id: string;
-  name: string;
-  environment: string;
-  lighting: string;
-  renderPasses: number;
-  noiseThreshold: number;
-  denoiser: string;
-  layers: string[];
-  renderElements: string[];
-  color: string;
-}
-
-export interface Camera {
-  id: string;
-  name: string;
-  fov?: number;
-}
-
-export interface Container {
-  id: string;
-  name: string;
-  parentId: string | null;
-  sceneStateId: string;
-  outputPathTemplate: string;
-  sortOrder: number;
-  sceneId: string;
-  expanded: boolean;
-}
-
-export interface Shot {
-  id: string;
-  name: string;
-  containerId: string;
-  cameraId: string;
-  resolutionWidth: number;
-  resolutionHeight: number;
-  sceneStateId: string | null;
-  overrides: Record<string, unknown>;
-  outputPath: string;
-  outputFormat: string;
-  enabled: boolean;
-  sortOrder: number;
-}
-
-// Mappers
-function mapScene(r: DbScene): Scene {
-  return { id: r.id, name: r.name, filePath: r.file_path, instanceHost: r.instance_host, isActive: r.is_active };
-}
-function mapState(r: DbSceneState): SceneState {
-  return { id: r.id, name: r.name, environment: r.environment, lighting: r.lighting, renderPasses: r.render_passes, noiseThreshold: r.noise_threshold, denoiser: r.denoiser, layers: r.layers, renderElements: r.render_elements, color: r.color };
-}
-function mapCamera(r: DbCamera): Camera {
-  return { id: r.id, name: r.name, fov: r.fov };
-}
-function mapContainer(r: DbContainer): Container {
-  return { id: r.id, name: r.name, parentId: r.parent_id, sceneStateId: r.scene_state_id, outputPathTemplate: r.output_path_template, sortOrder: r.sort_order, sceneId: r.scene_id, expanded: true };
-}
-function mapShot(r: DbShot): Shot {
-  return { id: r.id, name: r.name, containerId: r.container_id, cameraId: r.camera_id, resolutionWidth: r.resolution_width, resolutionHeight: r.resolution_height, sceneStateId: r.scene_state_id, overrides: r.overrides || {}, outputPath: r.output_path, outputFormat: r.output_format, enabled: r.enabled, sortOrder: r.sort_order };
-}
-
-// Reverse mappers (client → DB)
-function toDbShot(s: Shot): DbShot {
-  return { id: s.id, name: s.name, container_id: s.containerId, camera_id: s.cameraId, resolution_width: s.resolutionWidth, resolution_height: s.resolutionHeight, scene_state_id: s.sceneStateId, overrides: s.overrides, output_path: s.outputPath, output_format: s.outputFormat, enabled: s.enabled, sort_order: s.sortOrder };
-}
-function toDbContainer(c: Container): Omit<DbContainer, 'expanded'> {
-  return { id: c.id, name: c.name, parent_id: c.parentId, scene_state_id: c.sceneStateId, output_path_template: c.outputPathTemplate, sort_order: c.sortOrder, scene_id: c.sceneId };
-}
-
-export type SelectionKind = 'shot' | 'container' | 'camera' | 'sceneState' | 'resolution' | 'output' | null;
 
 interface FlowState {
+  // Data
   scenes: Scene[];
   activeSceneId: string | null;
-  shots: Shot[];
-  containers: Container[];
-  sceneStates: SceneState[];
   cameras: Camera[];
+  studioDefaults: StudioDefault[];
+  nodeConfigs: NodeConfig[];
+  flowNodes: FlowNode[];
+  flowEdges: FlowEdge[];
+  viewport: { x: number; y: number; zoom: number };
+
+  // Selection
+  selectedNodeId: string | null;
+
+  // Output preview
+  resolvedPaths: ResolvedPath[];
+  pathCount: number;
+
+  // Loading
   loading: boolean;
   error: string | null;
 
-  // Selection — unified model
-  selectedShotId: string | null;
-  selectedContainerId: string | null;
-  selectionKind: SelectionKind;
-  selectionId: string | null;
-
   // Actions
   loadAll: () => Promise<void>;
-  setActiveScene: (id: string) => void;
-  selectShot: (id: string | null) => void;
-  selectContainer: (id: string | null) => void;
-  selectNode: (kind: SelectionKind, id: string | null) => void;
-  toggleContainer: (id: string) => void;
-  updateShot: (id: string, updates: Partial<Shot>) => Promise<void>;
-  updateContainer: (id: string, updates: Partial<Container>) => Promise<void>;
-  setOverride: (shotId: string, field: string, value: unknown) => Promise<void>;
-  clearOverride: (shotId: string, field: string) => Promise<void>;
-
-  // Resolvers
-  getResolvedState: (shot: Shot) => SceneState;
-  getShotsForContainer: (containerId: string) => Shot[];
-
-  // Socket setup
+  setActiveScene: (id: string) => Promise<void>;
+  selectNode: (id: string | null) => void;
+  addNode: (type: NodeType, position: { x: number; y: number }, configId?: string, cameraId?: string) => void;
+  removeNode: (id: string) => void;
+  addEdge: (source: string, target: string) => boolean;
+  removeEdge: (id: string) => void;
+  updateNodePosition: (id: string, position: { x: number; y: number }) => void;
+  updateNodeLabel: (id: string, label: string) => void;
+  toggleHidePrevious: (id: string) => void;
+  toggleOutputEnabled: (nodeId: string) => void;
+  saveGraph: () => Promise<void>;
+  resolvePaths: () => Promise<void>;
+  createNodeConfig: (nodeType: NodeType, label: string, delta: Record<string, unknown>) => Promise<void>;
+  updateNodeConfig: (id: string, updates: { label?: string; delta?: Record<string, unknown> }) => Promise<void>;
+  deleteNodeConfig: (id: string) => Promise<void>;
   initSocket: () => void;
+}
+
+let nextNodeId = 1;
+function genNodeId(): string {
+  return `node_${Date.now()}_${nextNodeId++}`;
 }
 
 export const useFlowStore = create<FlowState>()((set, get) => ({
   scenes: [],
   activeSceneId: null,
-  shots: [],
-  containers: [],
-  sceneStates: [],
   cameras: [],
+  studioDefaults: [],
+  nodeConfigs: [],
+  flowNodes: [],
+  flowEdges: [],
+  viewport: { x: 0, y: 0, zoom: 1 },
+  selectedNodeId: null,
+  resolvedPaths: [],
+  pathCount: 0,
   loading: true,
   error: null,
-  selectedShotId: null,
-  selectedContainerId: null,
-  selectionKind: null,
-  selectionId: null,
 
   loadAll: async () => {
     set({ loading: true, error: null });
     try {
-      // Load scenes first
-      const scenes = await api.fetchScenes();
-      const mappedScenes = scenes.map(mapScene);
-      const activeId = mappedScenes[0]?.id ?? null;
-
-      // Load scene-specific data
-      const [states, cams, ctrs, shots] = await Promise.all([
-        api.fetchSceneStates(),
-        api.fetchCameras(activeId ?? undefined),
-        api.fetchContainers(activeId ?? undefined),
-        api.fetchShots(activeId ?? undefined),
+      const [scenes, defaults, configs] = await Promise.all([
+        api.fetchScenes(),
+        api.fetchStudioDefaults(),
+        api.fetchNodeConfigs(),
       ]);
+      const activeId = scenes[0]?.id ?? null;
+
+      let cameras: Camera[] = [];
+      let flowNodes: FlowNode[] = [];
+      let flowEdges: FlowEdge[] = [];
+      let viewport = { x: 0, y: 0, zoom: 1 };
+
+      if (activeId) {
+        const [cams, flowConfig] = await Promise.all([
+          api.fetchCameras(activeId),
+          api.fetchFlowConfig(activeId),
+        ]);
+        cameras = cams;
+        if (flowConfig) {
+          flowNodes = flowConfig.nodes || [];
+          flowEdges = flowConfig.edges || [];
+          viewport = flowConfig.viewport || viewport;
+        }
+      }
+
       set({
-        scenes: mappedScenes,
+        scenes,
         activeSceneId: activeId,
-        sceneStates: states.map(mapState),
-        cameras: cams.map(mapCamera),
-        containers: ctrs.map(mapContainer),
-        shots: shots.map(mapShot),
+        cameras,
+        studioDefaults: defaults,
+        nodeConfigs: configs,
+        flowNodes,
+        flowEdges,
+        viewport,
         loading: false,
       });
+
+      if (activeId) get().resolvePaths();
     } catch (err) {
       set({ loading: false, error: err instanceof Error ? err.message : 'Failed to load data' });
     }
   },
 
   setActiveScene: async (id: string) => {
-    set({ activeSceneId: id, selectedShotId: null, selectedContainerId: null, selectionKind: null, selectionId: null, loading: true });
+    set({ activeSceneId: id, selectedNodeId: null, loading: true });
     try {
-      const [cams, ctrs, shots] = await Promise.all([
+      const [cams, flowConfig] = await Promise.all([
         api.fetchCameras(id),
-        api.fetchContainers(id),
-        api.fetchShots(id),
+        api.fetchFlowConfig(id),
       ]);
       set({
-        cameras: cams.map(mapCamera),
-        containers: ctrs.map(mapContainer),
-        shots: shots.map(mapShot),
+        cameras: cams,
+        flowNodes: flowConfig?.nodes || [],
+        flowEdges: flowConfig?.edges || [],
+        viewport: flowConfig?.viewport || { x: 0, y: 0, zoom: 1 },
         loading: false,
       });
+      get().resolvePaths();
     } catch (err) {
       set({ loading: false, error: err instanceof Error ? err.message : 'Failed to load scene' });
     }
   },
 
-  selectShot: (id) => set({ selectedShotId: id, selectedContainerId: null, selectionKind: id ? 'shot' : null, selectionId: id }),
-  selectContainer: (id) => set({ selectedContainerId: id, selectedShotId: null, selectionKind: id ? 'container' : null, selectionId: id }),
-  selectNode: (kind, id) => set({
-    selectionKind: id ? kind : null,
-    selectionId: id,
-    selectedShotId: kind === 'shot' ? id : null,
-    selectedContainerId: kind === 'container' ? id : null,
-  }),
+  selectNode: (id) => set({ selectedNodeId: id }),
 
-  toggleContainer: (id) =>
+  addNode: (type, position, configId, cameraId) => {
+    const id = genNodeId();
+    const defaultLabels: Record<NodeType, string> = {
+      camera: 'Camera',
+      group: 'Group',
+      lightSetup: 'Light Setup',
+      toneMapping: 'Tone Mapping',
+      layerSetup: 'Layer Setup',
+      aspectRatio: 'Aspect Ratio',
+      stageRev: 'Stage Rev',
+      override: 'Override',
+      deadline: 'Deadline',
+      output: 'Output',
+    };
+    const node: FlowNode = {
+      id,
+      type,
+      label: defaultLabels[type],
+      position,
+      ...(configId && { config_id: configId }),
+      ...(cameraId && { camera_id: cameraId }),
+      ...(type === 'output' && { enabled: true }),
+      ...(type === 'group' && { hide_previous: false }),
+    };
+    set((s) => ({ flowNodes: [...s.flowNodes, node], selectedNodeId: id }));
+  },
+
+  removeNode: (id) => {
     set((s) => ({
-      containers: s.containers.map((c) => (c.id === id ? { ...c, expanded: !c.expanded } : c)),
-    })),
+      flowNodes: s.flowNodes.filter((n) => n.id !== id),
+      flowEdges: s.flowEdges.filter((e) => e.source !== id && e.target !== id),
+      selectedNodeId: s.selectedNodeId === id ? null : s.selectedNodeId,
+    }));
+  },
 
-  updateShot: async (id, updates) => {
-    const shot = get().shots.find((s) => s.id === id);
-    if (!shot) return;
-    const merged = { ...shot, ...updates };
-    // Optimistic update
-    set((s) => ({ shots: s.shots.map((sh) => (sh.id === id ? merged : sh)) }));
+  addEdge: (source, target) => {
+    const { flowNodes, flowEdges } = get();
+    const sourceNode = flowNodes.find((n) => n.id === source);
+    const targetNode = flowNodes.find((n) => n.id === target);
+    if (!sourceNode || !targetNode) return false;
+    if (!isValidConnection(sourceNode.type, targetNode.type)) return false;
+    // Prevent duplicate edges
+    if (flowEdges.some((e) => e.source === source && e.target === target)) return false;
+
+    const edge: FlowEdge = {
+      id: `edge_${source}_${target}`,
+      source,
+      target,
+    };
+    set((s) => ({ flowEdges: [...s.flowEdges, edge] }));
+    return true;
+  },
+
+  removeEdge: (id) => {
+    set((s) => ({ flowEdges: s.flowEdges.filter((e) => e.id !== id) }));
+  },
+
+  updateNodePosition: (id, position) => {
+    set((s) => ({
+      flowNodes: s.flowNodes.map((n) => (n.id === id ? { ...n, position } : n)),
+    }));
+  },
+
+  updateNodeLabel: (id, label) => {
+    set((s) => ({
+      flowNodes: s.flowNodes.map((n) => (n.id === id ? { ...n, label } : n)),
+    }));
+  },
+
+  toggleHidePrevious: (id) => {
+    set((s) => ({
+      flowNodes: s.flowNodes.map((n) =>
+        n.id === id && n.type === 'group' ? { ...n, hide_previous: !n.hide_previous } : n
+      ),
+    }));
+  },
+
+  toggleOutputEnabled: (nodeId) => {
+    set((s) => ({
+      flowNodes: s.flowNodes.map((n) =>
+        n.id === nodeId && n.type === 'output' ? { ...n, enabled: !n.enabled } : n
+      ),
+    }));
+  },
+
+  saveGraph: async () => {
+    const { activeSceneId, flowNodes, flowEdges, viewport } = get();
+    if (!activeSceneId) return;
     try {
-      await api.updateShot(id, toDbShot(merged));
+      await api.saveFlowConfig({
+        scene_id: activeSceneId,
+        nodes: flowNodes,
+        edges: flowEdges,
+        viewport,
+      });
     } catch (err) {
-      // Revert on failure
-      set((s) => ({ shots: s.shots.map((sh) => (sh.id === id ? shot : sh)) }));
+      set({ error: err instanceof Error ? err.message : 'Failed to save graph' });
     }
   },
 
-  updateContainer: async (id, updates) => {
-    const ctr = get().containers.find((c) => c.id === id);
-    if (!ctr) return;
-    const merged = { ...ctr, ...updates };
-    set((s) => ({ containers: s.containers.map((c) => (c.id === id ? merged : c)) }));
+  resolvePaths: async () => {
+    const { activeSceneId } = get();
+    if (!activeSceneId) return;
     try {
-      await api.updateContainer(id, toDbContainer(merged));
-    } catch (err) {
-      set((s) => ({ containers: s.containers.map((c) => (c.id === id ? ctr : c)) }));
+      const result = await api.resolvePaths(activeSceneId);
+      set({ resolvedPaths: result.paths, pathCount: result.count });
+    } catch {
+      // Non-critical — paths will be empty
+      set({ resolvedPaths: [], pathCount: 0 });
     }
   },
 
-  setOverride: async (shotId, field, value) => {
-    const shot = get().shots.find((s) => s.id === shotId);
-    if (!shot) return;
-    const updated = { ...shot, overrides: { ...shot.overrides, [field]: value } };
-    set((s) => ({ shots: s.shots.map((sh) => (sh.id === shotId ? updated : sh)) }));
+  createNodeConfig: async (nodeType, label, delta) => {
     try {
-      await api.updateShot(shotId, toDbShot(updated));
+      const config = await api.createNodeConfig({ node_type: nodeType, label, delta });
+      set((s) => ({ nodeConfigs: [...s.nodeConfigs, config] }));
     } catch (err) {
-      set((s) => ({ shots: s.shots.map((sh) => (sh.id === shotId ? shot : sh)) }));
+      set({ error: err instanceof Error ? err.message : 'Failed to create preset' });
     }
   },
 
-  clearOverride: async (shotId, field) => {
-    const shot = get().shots.find((s) => s.id === shotId);
-    if (!shot) return;
-    const { [field]: _, ...rest } = shot.overrides;
-    const updated = { ...shot, overrides: rest };
-    set((s) => ({ shots: s.shots.map((sh) => (sh.id === shotId ? updated : sh)) }));
+  updateNodeConfig: async (id, updates) => {
     try {
-      await api.updateShot(shotId, toDbShot(updated));
+      const config = await api.updateNodeConfig(id, updates);
+      set((s) => ({ nodeConfigs: s.nodeConfigs.map((c) => (c.id === id ? config : c)) }));
     } catch (err) {
-      set((s) => ({ shots: s.shots.map((sh) => (sh.id === shotId ? shot : sh)) }));
+      set({ error: err instanceof Error ? err.message : 'Failed to update preset' });
     }
   },
 
-  getResolvedState: (shot) => {
-    const { sceneStates, containers } = get();
-    const container = containers.find((c) => c.id === shot.containerId);
-    const stateId = shot.sceneStateId ?? container?.sceneStateId;
-    const baseState = sceneStates.find((s) => s.id === stateId) ?? sceneStates[0];
-    if (!baseState) return { id: '', name: '', environment: '', lighting: '', renderPasses: 0, noiseThreshold: 0, denoiser: '', layers: [], renderElements: [], color: 'teal' };
-    // Apply overrides (map snake_case override keys to camelCase fields)
-    const resolved = { ...baseState };
-    if ('renderPasses' in shot.overrides) resolved.renderPasses = shot.overrides.renderPasses as number;
-    if ('render_passes' in shot.overrides) resolved.renderPasses = shot.overrides.render_passes as number;
-    if ('noiseThreshold' in shot.overrides) resolved.noiseThreshold = shot.overrides.noiseThreshold as number;
-    if ('noise_threshold' in shot.overrides) resolved.noiseThreshold = shot.overrides.noise_threshold as number;
-    if ('environment' in shot.overrides) resolved.environment = shot.overrides.environment as string;
-    if ('lighting' in shot.overrides) resolved.lighting = shot.overrides.lighting as string;
-    if ('denoiser' in shot.overrides) resolved.denoiser = shot.overrides.denoiser as string;
-    if ('layers' in shot.overrides) resolved.layers = shot.overrides.layers as string[];
-    if ('renderElements' in shot.overrides) resolved.renderElements = shot.overrides.renderElements as string[];
-    if ('render_elements' in shot.overrides) resolved.renderElements = shot.overrides.render_elements as string[];
-    return resolved;
+  deleteNodeConfig: async (id) => {
+    try {
+      await api.deleteNodeConfig(id);
+      set((s) => ({ nodeConfigs: s.nodeConfigs.filter((c) => c.id !== id) }));
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Failed to delete preset' });
+    }
   },
-
-  getShotsForContainer: (containerId) => get().shots.filter((s) => s.containerId === containerId),
 
   initSocket: () => {
     const socket = getSocket();
 
-    socket.on('shot:created', (row: DbShot) => {
-      set((s) => ({ shots: [...s.shots.filter((sh) => sh.id !== row.id), mapShot(row)] }));
-    });
-    socket.on('shot:updated', (row: DbShot) => {
-      set((s) => ({ shots: s.shots.map((sh) => (sh.id === row.id ? mapShot(row) : sh)) }));
-    });
-    socket.on('shot:deleted', ({ id }: { id: string }) => {
-      set((s) => ({ shots: s.shots.filter((sh) => sh.id !== id) }));
-    });
-
-    socket.on('container:created', (row: DbContainer) => {
-      set((s) => ({ containers: [...s.containers.filter((c) => c.id !== row.id), mapContainer(row)] }));
-    });
-    socket.on('container:updated', (row: DbContainer) => {
-      set((s) => ({ containers: s.containers.map((c) => (c.id === row.id ? { ...mapContainer(row), expanded: c.expanded } : c)) }));
-    });
-    socket.on('container:deleted', ({ id }: { id: string }) => {
-      set((s) => ({ containers: s.containers.filter((c) => c.id !== id) }));
-    });
-
-    socket.on('scene-state:created', (row: DbSceneState) => {
-      set((s) => ({ sceneStates: [...s.sceneStates.filter((st) => st.id !== row.id), mapState(row)] }));
-    });
-    socket.on('scene-state:updated', (row: DbSceneState) => {
-      set((s) => ({ sceneStates: s.sceneStates.map((st) => (st.id === row.id ? mapState(row) : st)) }));
-    });
-
-    socket.on('scene:created', (row: DbScene) => {
-      set((s) => ({ scenes: [...s.scenes.filter((sc) => sc.id !== row.id), mapScene(row)] }));
+    socket.on('scene:created', (row: Scene) => {
+      set((s) => ({ scenes: [...s.scenes.filter((sc) => sc.id !== row.id), row] }));
     });
     socket.on('scene:deleted', ({ id }: { id: string }) => {
       set((s) => {
         const remaining = s.scenes.filter((sc) => sc.id !== id);
         const needSwitch = s.activeSceneId === id;
-        return {
-          scenes: remaining,
-          activeSceneId: needSwitch ? (remaining[0]?.id ?? null) : s.activeSceneId,
-        };
+        return { scenes: remaining, activeSceneId: needSwitch ? (remaining[0]?.id ?? null) : s.activeSceneId };
       });
+    });
+
+    socket.on('camera:upserted', (row: Camera) => {
+      set((s) => {
+        const exists = s.cameras.some((c) => c.id === row.id);
+        return { cameras: exists ? s.cameras.map((c) => (c.id === row.id ? row : c)) : [...s.cameras, row] };
+      });
+    });
+    socket.on('camera:deleted', ({ id }: { id: string }) => {
+      set((s) => ({ cameras: s.cameras.filter((c) => c.id !== id) }));
+    });
+
+    socket.on('studio-defaults:updated', (row: StudioDefault) => {
+      set((s) => ({ studioDefaults: s.studioDefaults.map((d) => (d.id === row.id ? row : d)) }));
+    });
+
+    socket.on('node-config:created', (row: NodeConfig) => {
+      set((s) => ({ nodeConfigs: [...s.nodeConfigs.filter((c) => c.id !== row.id), row] }));
+    });
+    socket.on('node-config:updated', (row: NodeConfig) => {
+      set((s) => ({ nodeConfigs: s.nodeConfigs.map((c) => (c.id === row.id ? row : c)) }));
+    });
+    socket.on('node-config:deleted', ({ id }: { id: string }) => {
+      set((s) => ({ nodeConfigs: s.nodeConfigs.filter((c) => c.id !== id) }));
+    });
+
+    socket.on('flow-config:updated', (row: any) => {
+      const { activeSceneId } = get();
+      if (row.scene_id === activeSceneId) {
+        set({
+          flowNodes: row.nodes || [],
+          flowEdges: row.edges || [],
+          viewport: row.viewport || { x: 0, y: 0, zoom: 1 },
+        });
+        get().resolvePaths();
+      }
     });
   },
 }));
