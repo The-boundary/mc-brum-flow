@@ -47,14 +47,16 @@ interface FlowState {
   removeEdge: (id: string) => void;
   updateNodePosition: (id: string, position: { x: number; y: number }) => void;
   updateViewport: (viewport: { x: number; y: number; zoom: number }) => void;
+  assignNodeConfig: (nodeId: string, configId?: string) => Promise<void>;
   updateNodeLabel: (id: string, label: string) => void;
   toggleHidePrevious: (id: string) => void;
   setResolvedPathEnabled: (pathKey: string, outputNodeId: string, enabled: boolean) => Promise<void>;
+  setOutputPathsEnabled: (outputNodeId: string, pathKeys: string[], enabled: boolean) => Promise<void>;
   setAllResolvedPathsEnabled: (enabled: boolean) => Promise<void>;
   saveGraph: () => Promise<void>;
   resolvePaths: () => Promise<void>;
-  createNodeConfig: (nodeType: NodeType, label: string, delta: Record<string, unknown>) => Promise<void>;
-  updateNodeConfig: (id: string, updates: { label?: string; delta?: Record<string, unknown> }) => Promise<void>;
+  createNodeConfig: (nodeType: NodeType, label: string, delta: Record<string, unknown>) => Promise<NodeConfig | null>;
+  updateNodeConfig: (id: string, updates: { label?: string; delta?: Record<string, unknown> }) => Promise<NodeConfig | null>;
   deleteNodeConfig: (id: string) => Promise<void>;
   initSocket: () => void;
 }
@@ -224,6 +226,22 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     scheduleStoreSave(get().saveGraph);
   },
 
+  assignNodeConfig: async (nodeId, configId) => {
+    const config = configId ? get().nodeConfigs.find((entry) => entry.id === configId) : null;
+    set((s) => ({
+      flowNodes: s.flowNodes.map((node) => {
+        if (node.id !== nodeId) return node;
+        return {
+          ...node,
+          config_id: configId,
+          ...(config ? { label: config.label } : {}),
+        };
+      }),
+    }));
+    await get().saveGraph();
+    await get().resolvePaths();
+  },
+
   updateNodeLabel: (id, label) => {
     set((s) => ({
       flowNodes: s.flowNodes.map((n) => (n.id === id ? { ...n, label } : n)),
@@ -259,6 +277,45 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
 
       const nextResolvedPaths = s.resolvedPaths.map((path) =>
         path.pathKey === pathKey ? { ...path, enabled } : path
+      );
+
+      return {
+        flowNodes: nextNodes,
+        resolvedPaths: nextResolvedPaths,
+      };
+    });
+
+    if (updated) {
+      await get().saveGraph();
+    }
+  },
+
+  setOutputPathsEnabled: async (outputNodeId, pathKeys, enabled) => {
+    if (pathKeys.length === 0) return;
+
+    const keySet = new Set(pathKeys);
+    let updated = false;
+
+    set((s) => {
+      const nextNodes = s.flowNodes.map((node) => {
+        if (node.id !== outputNodeId || node.type !== 'output') return node;
+
+        updated = true;
+        const nextStates = { ...(node.path_states ?? {}) };
+        for (const pathKey of keySet) {
+          nextStates[pathKey] = enabled;
+        }
+
+        return {
+          ...node,
+          path_states: nextStates,
+        };
+      });
+
+      const nextResolvedPaths = s.resolvedPaths.map((path) =>
+        path.outputNodeId === outputNodeId && keySet.has(path.pathKey)
+          ? { ...path, enabled }
+          : path
       );
 
       return {
@@ -340,8 +397,11 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     try {
       const config = await api.createNodeConfig({ node_type: nodeType, label, delta });
       set((s) => ({ nodeConfigs: [...s.nodeConfigs, config] }));
+      await get().resolvePaths();
+      return config;
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to create preset' });
+      return null;
     }
   },
 
@@ -349,8 +409,11 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     try {
       const config = await api.updateNodeConfig(id, updates);
       set((s) => ({ nodeConfigs: s.nodeConfigs.map((c) => (c.id === id ? config : c)) }));
+      await get().resolvePaths();
+      return config;
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to update preset' });
+      return null;
     }
   },
 
@@ -389,16 +452,20 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
 
     socket.on('studio-defaults:updated', (row: StudioDefault) => {
       set((s) => ({ studioDefaults: s.studioDefaults.map((d) => (d.id === row.id ? row : d)) }));
+      get().resolvePaths();
     });
 
     socket.on('node-config:created', (row: NodeConfig) => {
       set((s) => ({ nodeConfigs: [...s.nodeConfigs.filter((c) => c.id !== row.id), row] }));
+      get().resolvePaths();
     });
     socket.on('node-config:updated', (row: NodeConfig) => {
       set((s) => ({ nodeConfigs: s.nodeConfigs.map((c) => (c.id === row.id ? row : c)) }));
+      get().resolvePaths();
     });
     socket.on('node-config:deleted', ({ id }: { id: string }) => {
       set((s) => ({ nodeConfigs: s.nodeConfigs.filter((c) => c.id !== id) }));
+      get().resolvePaths();
     });
 
     socket.on('flow-config:updated', (row: any) => {

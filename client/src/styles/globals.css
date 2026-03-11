@@ -179,3 +179,25 @@ body {
   padding: 0 !important;
 }
 .react-flow__attribution { display: none; }
+
+.flow-node__handle {
+  width: 10px !important;
+  height: 10px !important;
+  border-width: 2px !important;
+  box-shadow: 0 0 0 2px rgba(16, 20, 21, 0.9);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    opacity 160ms ease;
+}
+
+.flow-edge__highlight-dash {
+  animation: flow-edge-dash 1.4s linear infinite;
+  stroke-linecap: round;
+}
+
+@keyframes flow-edge-dash {
+  to {
+    stroke-dashoffset: -36;
+  }
+}

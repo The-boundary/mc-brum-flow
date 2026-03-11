@@ -1,13 +1,16 @@
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import type { NodeProps } from '@xyflow/react';
 import { AlertTriangle } from 'lucide-react';
 import { useFlowStore } from '@/stores/flowStore';
+import { FlowNodeHandles } from '../FlowNodeHandles';
 
 interface OverrideFlowData {
   label: string;
   config_id?: string;
   isPathHighlighted?: boolean;
   isPathDimmed?: boolean;
+  inputHandleIds?: string[];
+  outputHandleIds?: string[];
   [key: string]: unknown;
 }
 
@@ -47,15 +50,12 @@ export const OverrideFlowNode = memo(({ id, data }: NodeProps & { data: Override
           </span>
         )}
       </div>
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="!w-2.5 !h-2.5 !bg-red-400 !border-red-600"
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="!w-2.5 !h-2.5 !bg-red-400 !border-red-600"
+      <FlowNodeHandles
+        nodeId={id}
+        inputHandleIds={data.inputHandleIds}
+        outputHandleIds={data.outputHandleIds}
+        inputClassName="!bg-red-400 !border-red-600"
+        outputClassName="!bg-red-400 !border-red-600"
       />
     </div>
   );

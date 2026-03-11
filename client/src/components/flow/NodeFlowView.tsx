@@ -9,6 +9,8 @@ import {
   type Node,
   type Edge,
   type OnConnect,
+  type OnConnectStart,
+  type OnConnectEnd,
   type Connection,
   type EdgeTypes,
   type EdgeMouseHandler,
@@ -26,8 +28,8 @@ import { useFlowStore } from '@/stores/flowStore';
 import { nodeTypes } from './nodes';
 import { ColoredEdge } from './ColoredEdge';
 import { getFlowSemantics } from './graphSemantics';
+import { getFlowHandleLayout, getSuggestedNextNodeTypes } from './flowLayout';
 import type { NodeType } from '@shared/types';
-import { PIPELINE_ORDER, isValidConnection } from '@shared/types';
 
 const edgeTypes: EdgeTypes = {
   colored: ColoredEdge,
@@ -47,6 +49,10 @@ interface AutoSuggestState {
   flowY: number;
   sourceNodeId: string;
   validTypes: NodeType[];
+}
+
+interface PendingConnectionState {
+  sourceNodeId: string;
 }
 
 const NODE_TYPE_META: Record<NodeType, { label: string; icon: typeof Camera }> = {
@@ -72,10 +78,15 @@ export function NodeFlowView() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [autoSuggest, setAutoSuggest] = useState<AutoSuggestState | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingConnectionRef = useRef<PendingConnectionState | null>(null);
   const reactFlowInstance = useReactFlow();
   const semantics = useMemo(
     () => getFlowSemantics(flowNodes, storeEdges, selectedNodeId),
     [flowNodes, selectedNodeId, storeEdges]
+  );
+  const handleLayout = useMemo(
+    () => getFlowHandleLayout(flowNodes, storeEdges),
+    [flowNodes, storeEdges]
   );
   const hasCameraSelection = semantics.selectedCameraNodeId !== null;
 
@@ -94,29 +105,35 @@ export function NodeFlowView() {
         enabled: n.enabled,
         isPathHighlighted: semantics.highlightedNodeIds.has(n.id),
         isPathDimmed: hasCameraSelection && !semantics.highlightedNodeIds.has(n.id),
+        inputHandleIds: handleLayout.nodeHandles.get(n.id)?.inputHandleIds ?? [],
+        outputHandleIds: handleLayout.nodeHandles.get(n.id)?.outputHandleIds ?? [],
       },
     })),
-    [flowNodes, hasCameraSelection, semantics]
+    [flowNodes, handleLayout.nodeHandles, hasCameraSelection, semantics]
   );
 
   // Convert store FlowEdges to ReactFlow Edges with colored type
   const rfEdges: Edge[] = useMemo(() =>
     storeEdges.map((e) => {
       const cameraCount = semantics.edgeCameraCounts.get(e.id) ?? 0;
+      const handleAssignment = handleLayout.edgeHandles.get(e.id);
 
       return {
         id: e.id,
         source: e.source,
         target: e.target,
+        sourceHandle: e.source_handle ?? handleAssignment?.sourceHandle,
+        targetHandle: e.target_handle ?? handleAssignment?.targetHandle,
         type: 'colored',
         data: {
           cameraCount,
           isPathHighlighted: semantics.highlightedEdgeIds.has(e.id),
           isPathDimmed: hasCameraSelection && !semantics.highlightedEdgeIds.has(e.id),
+          shouldAnimateFlow: hasCameraSelection && semantics.highlightedEdgeIds.has(e.id),
         },
       };
     }),
-    [hasCameraSelection, semantics, storeEdges]
+    [handleLayout.edgeHandles, hasCameraSelection, semantics, storeEdges]
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);
@@ -150,6 +167,20 @@ export function NodeFlowView() {
     if (success) scheduleSave();
   }, [storeAddEdge, scheduleSave]);
 
+  const onConnectStart: OnConnectStart = useCallback((_event, params) => {
+    if (!params.nodeId || params.handleType !== 'source') {
+      pendingConnectionRef.current = null;
+      return;
+    }
+
+    pendingConnectionRef.current = {
+      sourceNodeId: params.nodeId,
+    };
+
+    setContextMenu(null);
+    setAutoSuggest(null);
+  }, []);
+
   const deleteEdgeById = useCallback((edgeId: string) => {
     removeEdge(edgeId);
     scheduleSave();
@@ -165,42 +196,36 @@ export function NodeFlowView() {
   }, [deleteEdgeById]);
 
   // Auto-suggest: when user drops a connection on empty canvas
-  const onConnectEnd = useCallback((event: MouseEvent | TouchEvent) => {
-    const target = event.target as HTMLElement;
-    // Only show if dropped on the pane (not on a node)
-    if (target.classList.contains('react-flow__pane') || target.closest('.react-flow__pane')) {
-      // Find the connection source from the connecting state
-      const connectingState = reactFlowInstance.toObject();
-      // Get position from mouse/touch event
-      const clientX = 'clientX' in event ? event.clientX : event.touches?.[0]?.clientX ?? 0;
-      const clientY = 'clientY' in event ? event.clientY : event.touches?.[0]?.clientY ?? 0;
-      const flowPos = reactFlowInstance.screenToFlowPosition({ x: clientX, y: clientY });
+  const onConnectEnd: OnConnectEnd = useCallback((event, connectionState) => {
+    const pendingConnection = pendingConnectionRef.current;
+    pendingConnectionRef.current = null;
 
-      // Find which node was the source of the drag
-      // React Flow stores this internally - we check which handles were being dragged
-      const draggingNode = connectingState.nodes.find((n: any) =>
-        n.selected || document.querySelector(`[data-id="${n.id}"] .source.connecting`)
-      );
+    if (!pendingConnection) return;
+    if (connectionState?.isValid || connectionState?.toNode || connectionState?.toHandle) return;
 
-      if (draggingNode) {
-        const sourceType = draggingNode.type as NodeType;
-        const validTypes = [...PIPELINE_ORDER, 'override' as NodeType].filter((t) =>
-          isValidConnection(sourceType, t)
-        );
+    const target = event.target as Element | null;
+    const droppedOnInteractiveElement = Boolean(
+      target?.closest('.react-flow__node, .react-flow__handle, .react-flow__controls, .react-flow__minimap')
+    );
 
-        if (validTypes.length > 0) {
-          setAutoSuggest({
-            x: clientX,
-            y: clientY,
-            flowX: flowPos.x,
-            flowY: flowPos.y,
-            sourceNodeId: draggingNode.id,
-            validTypes,
-          });
-        }
-      }
-    }
-  }, [reactFlowInstance]);
+    if (droppedOnInteractiveElement) return;
+
+    const validTypes = getSuggestedNextNodeTypes(flowNodes, storeEdges, pendingConnection.sourceNodeId);
+    if (validTypes.length === 0) return;
+
+    const clientX = 'clientX' in event ? event.clientX : event.touches?.[0]?.clientX ?? 0;
+    const clientY = 'clientY' in event ? event.clientY : event.touches?.[0]?.clientY ?? 0;
+    const flowPos = reactFlowInstance.screenToFlowPosition({ x: clientX, y: clientY });
+
+    setAutoSuggest({
+      x: clientX + 8,
+      y: clientY + 8,
+      flowX: flowPos.x,
+      flowY: flowPos.y,
+      sourceNodeId: pendingConnection.sourceNodeId,
+      validTypes,
+    });
+  }, [flowNodes, reactFlowInstance, storeEdges]);
 
   // Click on background deselects
   const onPaneClick = useCallback(() => {
@@ -271,6 +296,7 @@ export function NodeFlowView() {
         onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onConnectStart={onConnectStart}
         onConnectEnd={onConnectEnd}
         onEdgeClick={onEdgeClick}
         onEdgeDoubleClick={onEdgeDoubleClick}

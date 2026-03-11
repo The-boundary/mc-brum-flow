@@ -31,6 +31,80 @@ const STAGE_LABEL_TYPES = new Set([
   'override',
 ]);
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function flattenDefaultSettings(defaults: Record<string, any>): Record<string, unknown> {
+  const flatDefaults: Record<string, unknown> = {};
+
+  for (const group of Object.values(defaults)) {
+    if (!isRecord(group) || !isRecord(group.parameters)) {
+      continue;
+    }
+
+    for (const [key, parameter] of Object.entries(group.parameters)) {
+      if (!isRecord(parameter) || !('default' in parameter)) {
+        continue;
+      }
+
+      flatDefaults[key] = parameter.default;
+    }
+  }
+
+  return flatDefaults;
+}
+
+function parseAspectRatio(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim();
+  const colonMatch = normalized.match(/^(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)$/);
+  if (colonMatch) {
+    const width = Number.parseFloat(colonMatch[1]);
+    const height = Number.parseFloat(colonMatch[2]);
+    return width > 0 && height > 0 ? width / height : null;
+  }
+
+  const slashMatch = normalized.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
+  if (slashMatch) {
+    const width = Number.parseFloat(slashMatch[1]);
+    const height = Number.parseFloat(slashMatch[2]);
+    return width > 0 && height > 0 ? width / height : null;
+  }
+
+  const singleValue = Number.parseFloat(normalized);
+  return Number.isFinite(singleValue) && singleValue > 0 ? singleValue : null;
+}
+
+function normalizeOutputResolution(resolvedConfig: Record<string, unknown>) {
+  const longestEdge = resolvedConfig.longest_edge;
+  const ratio = parseAspectRatio(resolvedConfig.ratio);
+  const currentWidth = typeof resolvedConfig.renderWidth === 'number' ? resolvedConfig.renderWidth : null;
+  const currentHeight = typeof resolvedConfig.renderHeight === 'number' ? resolvedConfig.renderHeight : null;
+  const fallbackRatio = currentWidth && currentHeight && currentHeight > 0 ? currentWidth / currentHeight : null;
+  const effectiveRatio = ratio ?? fallbackRatio;
+
+  if (typeof longestEdge === 'number' && Number.isFinite(longestEdge) && longestEdge > 0 && effectiveRatio && effectiveRatio > 0) {
+    if (effectiveRatio >= 1) {
+      resolvedConfig.renderWidth = Math.round(longestEdge);
+      resolvedConfig.renderHeight = Math.max(1, Math.round(longestEdge / effectiveRatio));
+    } else {
+      resolvedConfig.renderWidth = Math.max(1, Math.round(longestEdge * effectiveRatio));
+      resolvedConfig.renderHeight = Math.round(longestEdge);
+    }
+  }
+
+  delete resolvedConfig.longest_edge;
+  delete resolvedConfig.ratio;
+}
+
 export function resolveFlowPaths({
   flow,
   configs,
@@ -91,7 +165,7 @@ function resolveSinglePath(
   const stageLabels: ResolvedFlowPath['stageLabels'] = {};
   let cameraName = '';
   let revLabel = '';
-  const resolvedConfig = { ...defaults };
+  const resolvedConfig = flattenDefaultSettings(defaults);
 
   for (const nodeId of nodeIds) {
     const node = nodes.get(nodeId);
@@ -117,6 +191,8 @@ function resolveSinglePath(
       Object.assign(resolvedConfig, configs[node.config_id].delta);
     }
   }
+
+  normalizeOutputResolution(resolvedConfig);
 
   const format = outputNode.config_id
     ? (configs[outputNode.config_id]?.delta?.format ?? 'EXR')

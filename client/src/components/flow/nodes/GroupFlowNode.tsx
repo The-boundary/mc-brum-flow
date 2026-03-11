@@ -1,13 +1,16 @@
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import type { NodeProps } from '@xyflow/react';
 import { FolderOpen, Eye, EyeOff } from 'lucide-react';
 import { useFlowStore } from '@/stores/flowStore';
+import { FlowNodeHandles } from '../FlowNodeHandles';
 
 interface GroupFlowData {
   label: string;
   hide_previous?: boolean;
   isPathHighlighted?: boolean;
   isPathDimmed?: boolean;
+  inputHandleIds?: string[];
+  outputHandleIds?: string[];
   [key: string]: unknown;
 }
 
@@ -55,15 +58,12 @@ export const GroupFlowNode = memo(({ id, data }: NodeProps & { data: GroupFlowDa
           }
         </button>
       </div>
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="!w-2.5 !h-2.5 !bg-orange-400 !border-orange-600"
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="!w-2.5 !h-2.5 !bg-orange-400 !border-orange-600"
+      <FlowNodeHandles
+        nodeId={id}
+        inputHandleIds={data.inputHandleIds}
+        outputHandleIds={data.outputHandleIds}
+        inputClassName="!bg-orange-400 !border-orange-600"
+        outputClassName="!bg-orange-400 !border-orange-600"
       />
     </div>
   );

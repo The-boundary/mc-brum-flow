@@ -1,13 +1,15 @@
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import type { NodeProps } from '@xyflow/react';
 import { Camera, AlertTriangle } from 'lucide-react';
 import { useFlowStore } from '@/stores/flowStore';
+import { FlowNodeHandles } from '../FlowNodeHandles';
 
 interface CameraFlowData {
   label: string;
   camera_id?: string;
   isPathHighlighted?: boolean;
   isPathDimmed?: boolean;
+  outputHandleIds?: string[];
   [key: string]: unknown;
 }
 
@@ -47,10 +49,11 @@ export const CameraFlowNode = memo(({ id, data }: NodeProps & { data: CameraFlow
           </span>
         </div>
       )}
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="!w-2.5 !h-2.5 !bg-emerald-400 !border-emerald-600"
+      <FlowNodeHandles
+        nodeId={id}
+        outputHandleIds={data.outputHandleIds}
+        inputClassName="!bg-emerald-400 !border-emerald-600"
+        outputClassName="!bg-emerald-400 !border-emerald-600"
       />
     </div>
   );

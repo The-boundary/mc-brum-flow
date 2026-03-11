@@ -1,7 +1,8 @@
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import type { NodeProps } from '@xyflow/react';
 import { Sun, Contrast, Layers, RectangleHorizontal, Gauge, Server, type LucideIcon } from 'lucide-react';
 import { useFlowStore } from '@/stores/flowStore';
+import { FlowNodeHandles } from '../FlowNodeHandles';
 
 const NODE_STYLES: Record<string, { color: string; borderSelected: string; bgSelected: string; shadow: string; hoverBorder: string; badgeBg: string; badgeText: string; handleBg: string; handleBorder: string; icon: LucideIcon; label: string }> = {
   lightSetup:  { color: 'amber',  borderSelected: 'border-amber-400', bgSelected: 'bg-amber-400/10', shadow: 'shadow-[0_0_12px_rgba(251,191,36,0.25)]', hoverBorder: 'hover:border-amber-400/50', badgeBg: 'bg-amber-400/15', badgeText: 'text-amber-300', handleBg: '!bg-amber-400', handleBorder: '!border-amber-600', icon: Sun, label: 'Light Setup' },
@@ -27,6 +28,8 @@ interface ProcessingFlowData {
   config_id?: string;
   isPathHighlighted?: boolean;
   isPathDimmed?: boolean;
+  inputHandleIds?: string[];
+  outputHandleIds?: string[];
   [key: string]: unknown;
 }
 
@@ -71,15 +74,12 @@ export const ProcessingFlowNode = memo(({ id, data, type }: NodeProps & { data: 
           </span>
         )}
       </div>
-      <Handle
-        type="target"
-        position={Position.Left}
-        className={`!w-2.5 !h-2.5 ${style.handleBg} ${style.handleBorder}`}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        className={`!w-2.5 !h-2.5 ${style.handleBg} ${style.handleBorder}`}
+      <FlowNodeHandles
+        nodeId={id}
+        inputHandleIds={data.inputHandleIds}
+        outputHandleIds={data.outputHandleIds}
+        inputClassName={`${style.handleBg} ${style.handleBorder}`}
+        outputClassName={`${style.handleBg} ${style.handleBorder}`}
       />
     </div>
   );

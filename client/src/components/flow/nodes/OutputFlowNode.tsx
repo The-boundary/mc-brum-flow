@@ -1,7 +1,8 @@
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import type { NodeProps } from '@xyflow/react';
 import { FileOutput } from 'lucide-react';
 import { useFlowStore } from '@/stores/flowStore';
+import { FlowNodeHandles } from '../FlowNodeHandles';
 
 interface OutputFlowData {
   label: string;
@@ -9,6 +10,7 @@ interface OutputFlowData {
   config_id?: string;
   isPathHighlighted?: boolean;
   isPathDimmed?: boolean;
+  inputHandleIds?: string[];
   [key: string]: unknown;
 }
 
@@ -55,10 +57,11 @@ export const OutputFlowNode = memo(({ id, data }: NodeProps & { data: OutputFlow
           {format}
         </span>
       </div>
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="!w-2.5 !h-2.5 !bg-fuchsia-400 !border-fuchsia-600"
+      <FlowNodeHandles
+        nodeId={id}
+        inputHandleIds={data.inputHandleIds}
+        inputClassName="!bg-fuchsia-400 !border-fuchsia-600"
+        outputClassName="!bg-fuchsia-400 !border-fuchsia-600"
       />
     </div>
   );
