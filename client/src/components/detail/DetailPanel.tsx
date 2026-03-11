@@ -1,369 +1,293 @@
 import { useFlowStore } from '@/stores/flowStore';
-import { Camera, FolderOpen, Palette, RotateCcw, RefreshCcw, Maximize2, FileOutput, Box } from 'lucide-react';
+import {
+  Camera, FolderOpen, Sun, Contrast, Layers, RectangleHorizontal,
+  Gauge, Server, AlertTriangle, FileOutput, RotateCcw, Eye, EyeOff,
+  ToggleLeft, ToggleRight,
+} from 'lucide-react';
+import type { NodeType } from '@shared/types';
+
+const NODE_TYPE_LABELS: Record<NodeType, { label: string; color: string; icon: typeof Camera }> = {
+  camera:      { label: 'Camera',        color: 'text-emerald-400', icon: Camera },
+  group:       { label: 'Group',         color: 'text-orange-400',  icon: FolderOpen },
+  lightSetup:  { label: 'Light Setup',   color: 'text-amber-400',   icon: Sun },
+  toneMapping: { label: 'Tone Mapping',  color: 'text-blue-400',    icon: Contrast },
+  layerSetup:  { label: 'Layer Setup',   color: 'text-cyan-400',    icon: Layers },
+  aspectRatio: { label: 'Aspect Ratio',  color: 'text-teal-400',    icon: RectangleHorizontal },
+  stageRev:    { label: 'Stage Rev',     color: 'text-green-400',   icon: Gauge },
+  override:    { label: 'Override',      color: 'text-red-400',     icon: AlertTriangle },
+  deadline:    { label: 'Deadline',      color: 'text-purple-400',  icon: Server },
+  output:      { label: 'Output',        color: 'text-fuchsia-400', icon: FileOutput },
+};
 
 export function DetailPanel() {
-  const { selectionKind, selectionId } = useFlowStore();
+  const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
+  const flowNodes = useFlowStore((s) => s.flowNodes);
 
-  if (!selectionKind || !selectionId) return <EmptyPanel />;
+  if (!selectedNodeId) return <EmptyPanel />;
+  const node = flowNodes.find((n) => n.id === selectedNodeId);
+  if (!node) return <EmptyPanel />;
 
-  switch (selectionKind) {
-    case 'shot': return <ShotDetail />;
-    case 'container': return <ContainerDetail />;
-    case 'camera': return <CameraDetail />;
-    case 'sceneState': return <SceneStateDetail />;
-    case 'resolution': return <ResolutionDetail />;
-    case 'output': return <OutputDetail />;
-    default: return <EmptyPanel />;
+  switch (node.type) {
+    case 'camera':   return <CameraDetail nodeId={node.id} />;
+    case 'group':    return <GroupDetail nodeId={node.id} />;
+    case 'output':   return <OutputDetail nodeId={node.id} />;
+    case 'override': return <ProcessingDetail nodeId={node.id} />;
+    default:         return <ProcessingDetail nodeId={node.id} />;
   }
-}
-
-// ── Shot Detail ──
-
-function ShotDetail() {
-  const {
-    selectionId, shots, containers, cameras,
-    getResolvedState, setOverride, clearOverride,
-  } = useFlowStore();
-
-  const shot = shots.find((s) => s.id === selectionId);
-  if (!shot) return <EmptyPanel />;
-
-  const cam = cameras.find((c) => c.id === shot.cameraId);
-  const container = containers.find((c) => c.id === shot.containerId);
-  const resolved = getResolvedState(shot);
-  const hasOverride = (field: string) => field in shot.overrides;
-
-  return (
-    <div className="p-4 space-y-5">
-      <div>
-        <div className="flex items-center gap-2">
-          <Box className="w-4 h-4 text-brand" />
-          <h2 className="text-sm font-semibold text-foreground">{shot.name}</h2>
-        </div>
-        <div className="flex items-center gap-1.5 mt-1 text-[11px] text-fg-dim">
-          <FolderOpen className="w-3 h-3" />
-          <span>{container?.name}</span>
-          <span className="mx-1">·</span>
-          <Camera className="w-3 h-3" />
-          <span>{cam?.name}</span>
-        </div>
-      </div>
-
-      <div className="aspect-video rounded-lg bg-surface-300 border border-border flex items-center justify-center">
-        <span className="text-xs text-fg-dim">No render preview</span>
-      </div>
-
-      <Section title="Resolution">
-        <div className="text-xs text-foreground">{shot.resolutionWidth} × {shot.resolutionHeight}</div>
-      </Section>
-
-      <Section title="Scene State">
-        <Field label="Environment" value={resolved.environment} inherited={!hasOverride('environment')}
-          onOverride={() => setOverride(shot.id, 'environment', resolved.environment)}
-          onReset={() => clearOverride(shot.id, 'environment')} />
-        <Field label="Lighting" value={resolved.lighting} inherited={!hasOverride('lighting')}
-          onOverride={() => setOverride(shot.id, 'lighting', resolved.lighting)}
-          onReset={() => clearOverride(shot.id, 'lighting')} />
-        <Field label="Render Passes" value={String(resolved.renderPasses)} inherited={!hasOverride('renderPasses')}
-          onOverride={() => setOverride(shot.id, 'renderPasses', resolved.renderPasses)}
-          onReset={() => clearOverride(shot.id, 'renderPasses')} />
-        <Field label="Noise Threshold" value={String(resolved.noiseThreshold)} inherited={!hasOverride('noiseThreshold')}
-          onOverride={() => setOverride(shot.id, 'noiseThreshold', resolved.noiseThreshold)}
-          onReset={() => clearOverride(shot.id, 'noiseThreshold')} />
-        <Field label="Denoiser" value={resolved.denoiser} inherited={!hasOverride('denoiser')}
-          onOverride={() => setOverride(shot.id, 'denoiser', resolved.denoiser)}
-          onReset={() => clearOverride(shot.id, 'denoiser')} />
-      </Section>
-
-      <Section title="Layers">
-        <TagList items={resolved.layers} />
-      </Section>
-
-      <Section title="Render Elements">
-        <TagList items={resolved.renderElements} />
-      </Section>
-
-      <Section title="Output">
-        <div className="text-xs text-fg-muted font-mono">{shot.outputPath}</div>
-        <div className="text-xs text-fg-dim mt-1">Format: {shot.outputFormat}</div>
-      </Section>
-    </div>
-  );
 }
 
 // ── Camera Detail ──
 
-function CameraDetail() {
-  const { selectionId, cameras, shots } = useFlowStore();
-  const camera = cameras.find((c) => c.id === selectionId);
-  if (!camera) return <EmptyPanel />;
+function CameraDetail({ nodeId }: { nodeId: string }) {
+  const node = useFlowStore((s) => s.flowNodes.find((n) => n.id === nodeId));
+  const cameras = useFlowStore((s) => s.cameras);
+  const updateNodeLabel = useFlowStore((s) => s.updateNodeLabel);
 
-  const usingShots = shots.filter((s) => s.cameraId === camera.id);
+  if (!node) return <EmptyPanel />;
+  const camera = node.camera_id ? cameras.find((c) => c.id === node.camera_id) : null;
+  const meta = NODE_TYPE_LABELS.camera;
 
   return (
     <div className="p-4 space-y-5">
-      <div className="flex items-center gap-2">
-        <Camera className="w-4 h-4 text-amber-400" />
-        <h2 className="text-sm font-semibold text-foreground">{camera.name}</h2>
-      </div>
+      <NodeHeader label={camera?.name ?? node.label} type="camera" />
 
-      {camera.fov != null && (
-        <Section title="Field of View">
-          <div className="text-xs text-foreground">{camera.fov}°</div>
+      {camera && (
+        <Section title="Camera Info">
+          <div className="space-y-1.5 text-xs">
+            <Row label="Name" value={camera.name} />
+            <Row label="Max Handle" value={String(camera.max_handle)} />
+            {camera.max_class && <Row label="Class" value={camera.max_class} />}
+          </div>
         </Section>
       )}
 
-      <Section title={`Used by ${usingShots.length} shot${usingShots.length !== 1 ? 's' : ''}`}>
-        {usingShots.map((shot) => (
-          <ShotRef key={shot.id} shot={shot} />
-        ))}
+      {!camera && node.camera_id && (
+        <div className="flex items-center gap-2 p-2 rounded bg-red-400/10 border border-red-400/30">
+          <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+          <span className="text-xs text-red-300">Camera has been removed from the scene</span>
+        </div>
+      )}
+
+      <Section title="Label">
+        <input
+          type="text"
+          value={node.label}
+          onChange={(e) => updateNodeLabel(nodeId, e.target.value)}
+          className="w-full px-2 py-1 rounded bg-surface-300 border border-border text-xs text-foreground focus:border-brand focus:outline-none"
+        />
       </Section>
     </div>
   );
 }
 
-// ── Scene State Detail ──
+// ── Group Detail ──
 
-function SceneStateDetail() {
-  const { selectionId, sceneStates, containers, shots } = useFlowStore();
-  const state = sceneStates.find((s) => s.id === selectionId);
-  if (!state) return <EmptyPanel />;
+function GroupDetail({ nodeId }: { nodeId: string }) {
+  const node = useFlowStore((s) => s.flowNodes.find((n) => n.id === nodeId));
+  const flowEdges = useFlowStore((s) => s.flowEdges);
+  const flowNodes = useFlowStore((s) => s.flowNodes);
+  const updateNodeLabel = useFlowStore((s) => s.updateNodeLabel);
+  const toggleHidePrevious = useFlowStore((s) => s.toggleHidePrevious);
+  const resolvedPaths = useFlowStore((s) => s.resolvedPaths);
 
-  const usingContainers = containers.filter((c) => c.sceneStateId === state.id);
-  const usingShots = shots.filter((s) => s.sceneStateId === state.id);
+  if (!node) return <EmptyPanel />;
+
+  const incomingEdges = flowEdges.filter((e) => e.target === nodeId);
+  const incomingNodes = incomingEdges.map((e) => flowNodes.find((n) => n.id === e.source)).filter(Boolean);
+  const pathsThrough = resolvedPaths.filter((p) => p.nodeIds.includes(nodeId));
 
   return (
     <div className="p-4 space-y-5">
-      <div className="flex items-center gap-2">
-        <Palette className="w-4 h-4 text-teal-400" />
-        <h2 className="text-sm font-semibold text-foreground">{state.name}</h2>
-      </div>
+      <NodeHeader label={node.label} type="group" />
+
+      <Section title="Label">
+        <input
+          type="text"
+          value={node.label}
+          onChange={(e) => updateNodeLabel(nodeId, e.target.value)}
+          className="w-full px-2 py-1 rounded bg-surface-300 border border-border text-xs text-foreground focus:border-brand focus:outline-none"
+        />
+      </Section>
+
+      <Section title="Visibility">
+        <button
+          onClick={() => toggleHidePrevious(nodeId)}
+          className="flex items-center gap-2 px-2 py-1.5 rounded bg-surface-300 border border-border text-xs hover:bg-surface-400 transition w-full"
+        >
+          {node.hide_previous
+            ? <><EyeOff className="w-3.5 h-3.5 text-fg-dim" /> <span>Previous nodes hidden</span></>
+            : <><Eye className="w-3.5 h-3.5 text-fg-dim" /> <span>Previous nodes visible</span></>
+          }
+        </button>
+      </Section>
+
+      <Section title={`Inputs (${incomingNodes.length})`}>
+        {incomingNodes.map((n) => n && (
+          <NodeRef key={n.id} nodeId={n.id} label={n.label} type={n.type} />
+        ))}
+        {incomingNodes.length === 0 && <span className="text-[10px] text-fg-dim">No inputs connected</span>}
+      </Section>
+
+      <Section title={`Paths through (${pathsThrough.length})`}>
+        {pathsThrough.slice(0, 10).map((p, i) => (
+          <div key={i} className="text-[10px] text-fg-muted py-0.5 font-mono truncate">{p.filename}</div>
+        ))}
+        {pathsThrough.length > 10 && (
+          <div className="text-[10px] text-fg-dim">+{pathsThrough.length - 10} more</div>
+        )}
+      </Section>
+    </div>
+  );
+}
+
+// ── Processing Node Detail (Light, ToneMap, Layer, AspectRatio, StageRev, Deadline, Override) ──
+
+function ProcessingDetail({ nodeId }: { nodeId: string }) {
+  const node = useFlowStore((s) => s.flowNodes.find((n) => n.id === nodeId));
+  const nodeConfigs = useFlowStore((s) => s.nodeConfigs);
+  const studioDefaults = useFlowStore((s) => s.studioDefaults);
+  const updateNodeLabel = useFlowStore((s) => s.updateNodeLabel);
+
+  if (!node) return <EmptyPanel />;
+
+  const config = node.config_id ? nodeConfigs.find((c) => c.id === node.config_id) : null;
+  const delta = config?.delta ?? {};
+  const deltaEntries = Object.entries(delta);
+
+  // Find relevant studio defaults category based on node type
+  const categoryMap: Partial<Record<NodeType, string>> = {
+    lightSetup: 'environment',
+    toneMapping: 'tone_mapping',
+    layerSetup: 'layers',
+    aspectRatio: 'scene_output',
+    stageRev: 'scene_output',
+    deadline: 'corona_renderer',
+    override: 'corona_renderer',
+  };
+
+  const defaultCategory = categoryMap[node.type] ?? 'corona_renderer';
+  const defaults = studioDefaults.find((d) => d.category === defaultCategory);
+  const defaultSettings = defaults?.settings ?? {};
+
+  return (
+    <div className="p-4 space-y-5">
+      <NodeHeader label={node.label} type={node.type} />
+
+      <Section title="Label">
+        <input
+          type="text"
+          value={node.label}
+          onChange={(e) => updateNodeLabel(nodeId, e.target.value)}
+          className="w-full px-2 py-1 rounded bg-surface-300 border border-border text-xs text-foreground focus:border-brand focus:outline-none"
+        />
+      </Section>
+
+      {config && (
+        <Section title={`Preset: ${config.label}`}>
+          <div className="text-[10px] text-fg-dim mb-2">
+            {deltaEntries.length} override{deltaEntries.length !== 1 ? 's' : ''} from studio defaults
+          </div>
+        </Section>
+      )}
 
       <Section title="Settings">
-        <div className="space-y-1.5 text-xs">
-          <div className="flex justify-between"><span className="text-fg-dim">Environment</span><span className="text-foreground">{state.environment}</span></div>
-          <div className="flex justify-between"><span className="text-fg-dim">Lighting</span><span className="text-foreground">{state.lighting}</span></div>
-          <div className="flex justify-between"><span className="text-fg-dim">Render Passes</span><span className="text-foreground">{state.renderPasses}</span></div>
-          <div className="flex justify-between"><span className="text-fg-dim">Noise Threshold</span><span className="text-foreground">{state.noiseThreshold}</span></div>
-          <div className="flex justify-between"><span className="text-fg-dim">Denoiser</span><span className="text-foreground">{state.denoiser}</span></div>
-        </div>
+        {deltaEntries.length === 0 && !config && (
+          <div className="text-[10px] text-fg-dim">No preset assigned. Right-click node to assign one.</div>
+        )}
+        {deltaEntries.length === 0 && config && (
+          <div className="text-[10px] text-fg-dim">Using studio defaults (no overrides)</div>
+        )}
+        {deltaEntries.map(([key, value]) => {
+          const defaultValue = defaultSettings[key];
+          const isOverridden = defaultValue !== undefined && defaultValue !== value;
+          return (
+            <div key={key} className="flex items-center justify-between py-1 border-b border-border/30">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-fg-dim w-32 truncate">{key}</span>
+                <span className={`text-xs ${isOverridden ? 'text-foreground font-medium' : 'text-fg-dim'}`}>
+                  {typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value)}
+                </span>
+              </div>
+              {isOverridden && (
+                <span className="text-[9px] text-fg-dim" title={`Default: ${String(defaultValue)}`}>
+                  <RotateCcw className="w-3 h-3 inline" />
+                </span>
+              )}
+            </div>
+          );
+        })}
       </Section>
 
-      <Section title="Layers">
-        <TagList items={state.layers} />
-      </Section>
-
-      <Section title="Render Elements">
-        <TagList items={state.renderElements} />
-      </Section>
-
-      <Section title={`Used by ${usingContainers.length} container${usingContainers.length !== 1 ? 's' : ''}`}>
-        {usingContainers.map((c) => (
-          <div key={c.id} className="text-xs text-fg-muted py-0.5">
-            <FolderOpen className="w-3 h-3 inline mr-1.5 text-fg-dim" />{c.name}
-          </div>
-        ))}
-      </Section>
-
-      {usingShots.length > 0 && (
-        <Section title={`${usingShots.length} shot${usingShots.length !== 1 ? 's' : ''} with direct override`}>
-          {usingShots.map((shot) => (
-            <ShotRef key={shot.id} shot={shot} />
+      {Object.keys(defaultSettings).length > 0 && (
+        <Section title="Studio Defaults">
+          <div className="text-[10px] text-fg-dim mb-1">Category: {defaultCategory}</div>
+          {Object.entries(defaultSettings).slice(0, 8).map(([key, value]) => (
+            <div key={key} className="flex justify-between py-0.5 text-[10px]">
+              <span className="text-fg-dim truncate w-32">{key}</span>
+              <span className="text-fg-muted">{String(value)}</span>
+            </div>
           ))}
+          {Object.keys(defaultSettings).length > 8 && (
+            <div className="text-[10px] text-fg-dim mt-1">+{Object.keys(defaultSettings).length - 8} more fields</div>
+          )}
         </Section>
       )}
-    </div>
-  );
-}
-
-// ── Resolution Detail ──
-
-const RESOLUTION_PRESETS: { label: string; ratio: string; resolutions: { w: number; h: number; label: string }[] }[] = [
-  {
-    label: '16:9', ratio: '16:9',
-    resolutions: [
-      { w: 1920, h: 1080, label: 'HD 1080p' },
-      { w: 2560, h: 1440, label: 'QHD 1440p' },
-      { w: 3840, h: 2160, label: '4K UHD' },
-      { w: 7680, h: 4320, label: '8K UHD' },
-    ],
-  },
-  {
-    label: '16:10', ratio: '16:10',
-    resolutions: [
-      { w: 1920, h: 1200, label: 'WUXGA' },
-      { w: 2560, h: 1600, label: 'WQXGA' },
-      { w: 3840, h: 2400, label: '4K+' },
-    ],
-  },
-  {
-    label: '2:1', ratio: '2:1',
-    resolutions: [
-      { w: 4096, h: 2048, label: '4K Pano' },
-      { w: 8192, h: 4096, label: '8K Pano' },
-    ],
-  },
-  {
-    label: '1:1', ratio: '1:1',
-    resolutions: [
-      { w: 2048, h: 2048, label: '2K Square' },
-      { w: 4096, h: 4096, label: '4K Square' },
-    ],
-  },
-  {
-    label: 'Arch Viz', ratio: 'Custom',
-    resolutions: [
-      { w: 5120, h: 2880, label: '5K' },
-      { w: 6000, h: 4000, label: '6K Photo' },
-      { w: 4000, h: 3000, label: '4:3 Print' },
-      { w: 5000, h: 2500, label: '2:1 Wide' },
-    ],
-  },
-];
-
-function ResolutionDetail() {
-  const { selectionId, shots } = useFlowStore();
-  if (!selectionId) return <EmptyPanel />;
-
-  const [w, h] = selectionId.split('x').map(Number);
-  const matchingShots = shots.filter((s) => s.resolutionWidth === w && s.resolutionHeight === h);
-  const aspectRatio = gcd(w, h);
-
-  return (
-    <div className="p-4 space-y-5">
-      <div className="flex items-center gap-2">
-        <Maximize2 className="w-4 h-4 text-green-400" />
-        <h2 className="text-sm font-semibold text-foreground">{w} × {h}</h2>
-      </div>
-
-      <Section title="Details">
-        <div className="space-y-1.5 text-xs">
-          <div className="flex justify-between"><span className="text-fg-dim">Width</span><span className="text-foreground">{w} px</span></div>
-          <div className="flex justify-between"><span className="text-fg-dim">Height</span><span className="text-foreground">{h} px</span></div>
-          <div className="flex justify-between"><span className="text-fg-dim">Aspect Ratio</span><span className="text-foreground">{w / aspectRatio}:{h / aspectRatio}</span></div>
-          <div className="flex justify-between"><span className="text-fg-dim">Megapixels</span><span className="text-foreground">{((w * h) / 1_000_000).toFixed(1)} MP</span></div>
-        </div>
-      </Section>
-
-      <Section title="Presets">
-        {RESOLUTION_PRESETS.map((group) => (
-          <div key={group.label} className="mb-3">
-            <div className="text-[10px] text-fg-dim font-medium mb-1.5">{group.label}</div>
-            <div className="flex flex-wrap gap-1">
-              {group.resolutions.map((res) => {
-                const isActive = res.w === w && res.h === h;
-                return (
-                  <button
-                    key={`${res.w}x${res.h}`}
-                    className={`px-2 py-1 rounded text-[10px] border transition-colors ${
-                      isActive
-                        ? 'bg-green-400/15 border-green-400/40 text-green-400'
-                        : 'bg-surface-300 border-border text-fg-muted hover:border-green-400/30 hover:text-foreground'
-                    }`}
-                    title={`${res.w} × ${res.h}`}
-                  >
-                    {res.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </Section>
-
-      <Section title={`Used by ${matchingShots.length} shot${matchingShots.length !== 1 ? 's' : ''}`}>
-        {matchingShots.map((shot) => (
-          <ShotRef key={shot.id} shot={shot} />
-        ))}
-      </Section>
     </div>
   );
 }
 
 // ── Output Detail ──
 
-function OutputDetail() {
-  const { selectionId, shots, containers, cameras } = useFlowStore();
-  const shot = shots.find((s) => s.id === selectionId);
-  if (!shot) return <EmptyPanel />;
+function OutputDetail({ nodeId }: { nodeId: string }) {
+  const node = useFlowStore((s) => s.flowNodes.find((n) => n.id === nodeId));
+  const nodeConfigs = useFlowStore((s) => s.nodeConfigs);
+  const toggleOutputEnabled = useFlowStore((s) => s.toggleOutputEnabled);
+  const updateNodeLabel = useFlowStore((s) => s.updateNodeLabel);
+  const resolvedPaths = useFlowStore((s) => s.resolvedPaths);
 
-  const container = containers.find((c) => c.id === shot.containerId);
-  const cam = cameras.find((c) => c.id === shot.cameraId);
+  if (!node) return <EmptyPanel />;
 
-  return (
-    <div className="p-4 space-y-5">
-      <div className="flex items-center gap-2">
-        <FileOutput className="w-4 h-4 text-purple-400" />
-        <h2 className="text-sm font-semibold text-foreground">{shot.name}.{shot.outputFormat.toLowerCase()}</h2>
-      </div>
-
-      <Section title="Output Settings">
-        <div className="space-y-1.5 text-xs">
-          <div className="flex justify-between"><span className="text-fg-dim">Format</span><span className="text-foreground">{shot.outputFormat}</span></div>
-          <div className="flex justify-between"><span className="text-fg-dim">Path</span><span className="text-foreground font-mono text-[10px]">{shot.outputPath || '—'}</span></div>
-          <div className="flex justify-between"><span className="text-fg-dim">Resolution</span><span className="text-foreground">{shot.resolutionWidth} × {shot.resolutionHeight}</span></div>
-        </div>
-      </Section>
-
-      <Section title="Source">
-        <div className="space-y-1.5 text-xs">
-          <div className="flex justify-between"><span className="text-fg-dim">Shot</span><span className="text-foreground">{shot.name}</span></div>
-          <div className="flex justify-between"><span className="text-fg-dim">Container</span><span className="text-foreground">{container?.name ?? '—'}</span></div>
-          <div className="flex justify-between"><span className="text-fg-dim">Camera</span><span className="text-foreground">{cam?.name ?? '—'}</span></div>
-        </div>
-      </Section>
-
-      <Section title="Output Path Template">
-        <div className="text-xs text-fg-muted font-mono">{container?.outputPathTemplate ?? '—'}</div>
-      </Section>
-    </div>
-  );
-}
-
-// ── Container Detail ──
-
-function ContainerDetail() {
-  const { selectionId, containers, sceneStates, shots } = useFlowStore();
-  const container = containers.find((c) => c.id === selectionId);
-  if (!container) return <EmptyPanel />;
-
-  const state = sceneStates.find((s) => s.id === container.sceneStateId);
-  const containerShots = shots.filter((s) => s.containerId === container.id);
+  const config = node.config_id ? nodeConfigs.find((c) => c.id === node.config_id) : null;
+  const format = (config?.delta?.format as string) ?? 'EXR';
+  const enabled = node.enabled !== false;
+  const pathsToThis = resolvedPaths.filter((p) => p.nodeIds[p.nodeIds.length - 1] === nodeId);
 
   return (
     <div className="p-4 space-y-5">
-      <div className="flex items-center gap-2">
-        <FolderOpen className="w-4 h-4 text-brand" />
-        <h2 className="text-sm font-semibold text-foreground">{container.name}</h2>
-      </div>
-      <div className="text-[11px] text-fg-dim">
-        {containerShots.length} shot{containerShots.length !== 1 ? 's' : ''}
-      </div>
+      <NodeHeader label={node.label} type="output" />
 
-      <Section title="Scene State">
-        <div className="flex items-center gap-2">
-          <Palette className="w-3.5 h-3.5 text-teal-400" />
-          <span className="text-xs text-foreground font-medium">{state?.name ?? 'None'}</span>
-        </div>
-        {state && (
-          <div className="mt-2 space-y-1.5 text-xs text-fg-muted">
-            <div>Environment: {state.environment}</div>
-            <div>Lighting: {state.lighting}</div>
-            <div>Passes: {state.renderPasses}</div>
-            <div>Noise: {state.noiseThreshold}</div>
-            <div>Denoiser: {state.denoiser}</div>
-          </div>
-        )}
+      <Section title="Label">
+        <input
+          type="text"
+          value={node.label}
+          onChange={(e) => updateNodeLabel(nodeId, e.target.value)}
+          className="w-full px-2 py-1 rounded bg-surface-300 border border-border text-xs text-foreground focus:border-brand focus:outline-none"
+        />
       </Section>
 
-      <Section title="Output Path Template">
-        <div className="text-xs text-fg-muted font-mono">{container.outputPathTemplate}</div>
+      <Section title="Status">
+        <button
+          onClick={() => toggleOutputEnabled(nodeId)}
+          className="flex items-center gap-2 px-2 py-1.5 rounded bg-surface-300 border border-border text-xs hover:bg-surface-400 transition w-full"
+        >
+          {enabled
+            ? <><ToggleRight className="w-4 h-4 text-emerald-400" /> <span className="text-emerald-300">Enabled</span></>
+            : <><ToggleLeft className="w-4 h-4 text-fg-dim" /> <span className="text-fg-dim">Disabled</span></>
+          }
+        </button>
       </Section>
 
-      <Section title="Shots">
-        {containerShots.map((shot) => (
-          <ShotRef key={shot.id} shot={shot} />
+      <Section title="Output Format">
+        <div className="text-xs text-foreground font-mono">{format}</div>
+      </Section>
+
+      <Section title={`Output Paths (${pathsToThis.length})`}>
+        {pathsToThis.map((p, i) => (
+          <div key={i} className="text-[10px] text-fg-muted py-0.5 font-mono truncate">{p.filename}</div>
         ))}
+        {pathsToThis.length === 0 && (
+          <div className="text-[10px] text-fg-dim">No paths reach this output</div>
+        )}
       </Section>
     </div>
   );
@@ -379,6 +303,22 @@ function EmptyPanel() {
   );
 }
 
+function NodeHeader({ label, type }: { label: string; type: NodeType }) {
+  const meta = NODE_TYPE_LABELS[type];
+  const Icon = meta.icon;
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <Icon className={`w-4 h-4 ${meta.color}`} />
+        <h2 className="text-sm font-semibold text-foreground">{label}</h2>
+      </div>
+      <div className="mt-0.5">
+        <span className={`text-[10px] ${meta.color} font-medium`}>{meta.label}</span>
+      </div>
+    </div>
+  );
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
@@ -388,54 +328,26 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function TagList({ items }: { items: string[] }) {
-  if (!items.length) return <span className="text-[10px] text-fg-dim">None</span>;
+function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-wrap gap-1">
-      {items.map((item) => (
-        <span key={item} className="px-1.5 py-0.5 rounded bg-surface-300 border border-border text-[10px] text-fg-muted">
-          {item}
-        </span>
-      ))}
+    <div className="flex justify-between">
+      <span className="text-fg-dim">{label}</span>
+      <span className="text-foreground">{value}</span>
     </div>
   );
 }
 
-function ShotRef({ shot }: { shot: { id: string; name: string } }) {
+function NodeRef({ nodeId, label, type }: { nodeId: string; label: string; type: NodeType }) {
   const selectNode = useFlowStore((s) => s.selectNode);
+  const meta = NODE_TYPE_LABELS[type];
+  const Icon = meta.icon;
   return (
     <button
-      onClick={() => selectNode('shot', shot.id)}
+      onClick={() => selectNode(nodeId)}
       className="flex items-center gap-1.5 w-full text-left text-xs text-fg-muted py-0.5 hover:text-brand transition-colors"
     >
-      <Box className="w-3 h-3 text-brand/60" />
-      {shot.name}
+      <Icon className={`w-3 h-3 ${meta.color}`} />
+      {label}
     </button>
   );
-}
-
-function Field({
-  label, value, inherited, onOverride, onReset,
-}: {
-  label: string; value: string; inherited: boolean; onOverride: () => void; onReset: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between py-1">
-      <div className="flex items-center gap-2">
-        <span className="text-[11px] text-fg-dim w-28">{label}</span>
-        <span className={`text-xs ${inherited ? 'text-fg-dim' : 'text-foreground'}`}>{value}</span>
-      </div>
-      <button
-        onClick={inherited ? onOverride : onReset}
-        className="p-0.5 rounded text-fg-dim hover:text-brand hover:bg-surface-400 transition"
-        title={inherited ? 'Override this field' : 'Reset to inherited'}
-      >
-        {inherited ? <RefreshCcw className="w-3 h-3" /> : <RotateCcw className="w-3 h-3" />}
-      </button>
-    </div>
-  );
-}
-
-function gcd(a: number, b: number): number {
-  return b === 0 ? a : gcd(b, a % b);
 }
