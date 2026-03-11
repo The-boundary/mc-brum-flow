@@ -4,7 +4,7 @@ import { useFlowStore, type ResolvedPath } from '@/stores/flowStore';
 export function MatrixView() {
   const resolvedPaths = useFlowStore((s) => s.resolvedPaths);
   const selectNode = useFlowStore((s) => s.selectNode);
-  const toggleOutputEnabled = useFlowStore((s) => s.toggleOutputEnabled);
+  const setResolvedPathEnabled = useFlowStore((s) => s.setResolvedPathEnabled);
   const pathCount = useFlowStore((s) => s.pathCount);
 
   const enabledCount = resolvedPaths.filter((p) => p.enabled).length;
@@ -36,18 +36,12 @@ export function MatrixView() {
             <span className="text-xs text-fg-dim">No output paths. Build a pipeline in the Flow view.</span>
           </div>
         ) : (
-          resolvedPaths.map((path, i) => (
+          resolvedPaths.map((path) => (
             <PathRow
-              key={i}
+              key={path.pathKey}
               path={path}
-              onSelect={() => {
-                const outputNodeId = path.nodeIds[path.nodeIds.length - 1];
-                selectNode(outputNodeId);
-              }}
-              onToggle={() => {
-                const outputNodeId = path.nodeIds[path.nodeIds.length - 1];
-                toggleOutputEnabled(outputNodeId);
-              }}
+              onSelect={() => selectNode(path.outputNodeId)}
+              onToggle={() => void setResolvedPathEnabled(path.pathKey, path.outputNodeId, !path.enabled)}
             />
           ))
         )}
@@ -57,12 +51,11 @@ export function MatrixView() {
 }
 
 function PathRow({ path, onSelect, onToggle }: { path: ResolvedPath; onSelect: () => void; onToggle: () => void }) {
-  // Extract per-stage labels from resolvedConfig
-  const lightSetup = (path.resolvedConfig?.lightSetup as string) ?? '—';
-  const toneMapping = (path.resolvedConfig?.toneMapping as string) ?? '—';
-  const layerSetup = (path.resolvedConfig?.layerSetup as string) ?? '—';
-  const aspectRatio = (path.resolvedConfig?.aspectRatio as string) ?? '—';
-  const stageRev = (path.resolvedConfig?.stageRev as string) ?? '—';
+  const lightSetup = path.stageLabels.lightSetup ?? '—';
+  const toneMapping = path.stageLabels.toneMapping ?? '—';
+  const layerSetup = path.stageLabels.layerSetup ?? '—';
+  const aspectRatio = path.stageLabels.aspectRatio ?? '—';
+  const stageRev = path.stageLabels.stageRev ?? '—';
   const format = (path.resolvedConfig?.format as string) ?? 'EXR';
 
   return (

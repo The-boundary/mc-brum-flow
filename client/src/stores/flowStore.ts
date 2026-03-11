@@ -5,11 +5,14 @@ import type { Scene, Camera, StudioDefault, NodeConfig, FlowNode, FlowEdge, Node
 import { isValidConnection } from '@shared/types';
 
 export interface ResolvedPath {
+  pathKey: string;
   nodeIds: string[];
+  outputNodeId: string;
   cameraName: string;
   filename: string;
   resolvedConfig: Record<string, unknown>;
   enabled: boolean;
+  stageLabels: Partial<Record<'lightSetup' | 'toneMapping' | 'layerSetup' | 'aspectRatio' | 'stageRev' | 'deadline' | 'override', string>>;
 }
 
 interface FlowState {
@@ -43,9 +46,11 @@ interface FlowState {
   addEdge: (source: string, target: string) => boolean;
   removeEdge: (id: string) => void;
   updateNodePosition: (id: string, position: { x: number; y: number }) => void;
+  updateViewport: (viewport: { x: number; y: number; zoom: number }) => void;
   updateNodeLabel: (id: string, label: string) => void;
   toggleHidePrevious: (id: string) => void;
-  toggleOutputEnabled: (nodeId: string) => void;
+  setResolvedPathEnabled: (pathKey: string, outputNodeId: string, enabled: boolean) => Promise<void>;
+  setAllResolvedPathsEnabled: (enabled: boolean) => Promise<void>;
   saveGraph: () => Promise<void>;
   resolvePaths: () => Promise<void>;
   createNodeConfig: (nodeType: NodeType, label: string, delta: Record<string, unknown>) => Promise<void>;
@@ -55,8 +60,17 @@ interface FlowState {
 }
 
 let nextNodeId = 1;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
 function genNodeId(): string {
   return `node_${Date.now()}_${nextNodeId++}`;
+}
+
+function scheduleStoreSave(saveGraph: () => Promise<void>) {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    void saveGraph();
+  }, 400);
 }
 
 export const useFlowStore = create<FlowState>()((set, get) => ({
@@ -205,10 +219,16 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     }));
   },
 
+  updateViewport: (viewport) => {
+    set({ viewport });
+    scheduleStoreSave(get().saveGraph);
+  },
+
   updateNodeLabel: (id, label) => {
     set((s) => ({
       flowNodes: s.flowNodes.map((n) => (n.id === id ? { ...n, label } : n)),
     }));
+    scheduleStoreSave(get().saveGraph);
   },
 
   toggleHidePrevious: (id) => {
@@ -217,14 +237,76 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
         n.id === id && n.type === 'group' ? { ...n, hide_previous: !n.hide_previous } : n
       ),
     }));
+    scheduleStoreSave(get().saveGraph);
   },
 
-  toggleOutputEnabled: (nodeId) => {
-    set((s) => ({
-      flowNodes: s.flowNodes.map((n) =>
-        n.id === nodeId && n.type === 'output' ? { ...n, enabled: !n.enabled } : n
-      ),
-    }));
+  setResolvedPathEnabled: async (pathKey, outputNodeId, enabled) => {
+    let updated = false;
+
+    set((s) => {
+      const nextNodes = s.flowNodes.map((node) => {
+        if (node.id !== outputNodeId || node.type !== 'output') return node;
+
+        updated = true;
+        return {
+          ...node,
+          path_states: {
+            ...(node.path_states ?? {}),
+            [pathKey]: enabled,
+          },
+        };
+      });
+
+      const nextResolvedPaths = s.resolvedPaths.map((path) =>
+        path.pathKey === pathKey ? { ...path, enabled } : path
+      );
+
+      return {
+        flowNodes: nextNodes,
+        resolvedPaths: nextResolvedPaths,
+      };
+    });
+
+    if (updated) {
+      await get().saveGraph();
+    }
+  },
+
+  setAllResolvedPathsEnabled: async (enabled) => {
+    let updated = false;
+
+    set((s) => {
+      const statesByOutput = new Map<string, Record<string, boolean>>();
+      for (const path of s.resolvedPaths) {
+        const outputStates = statesByOutput.get(path.outputNodeId) ?? {};
+        outputStates[path.pathKey] = enabled;
+        statesByOutput.set(path.outputNodeId, outputStates);
+      }
+
+      const nextNodes = s.flowNodes.map((node) => {
+        if (node.type !== 'output') return node;
+        const nextPathStates = statesByOutput.get(node.id);
+        if (!nextPathStates) return node;
+
+        updated = true;
+        return {
+          ...node,
+          path_states: {
+            ...(node.path_states ?? {}),
+            ...nextPathStates,
+          },
+        };
+      });
+
+      return {
+        flowNodes: nextNodes,
+        resolvedPaths: s.resolvedPaths.map((path) => ({ ...path, enabled })),
+      };
+    });
+
+    if (updated) {
+      await get().saveGraph();
+    }
   },
 
   saveGraph: async () => {

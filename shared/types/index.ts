@@ -58,7 +58,8 @@ export interface FlowNode {
   config_id?: string;      // FK to node_configs.id (null for camera/group)
   camera_id?: string;      // FK to cameras.id (only for camera nodes)
   hide_previous?: boolean;  // only for group nodes
-  enabled?: boolean;        // only for output nodes (enable/disable path)
+  enabled?: boolean;        // legacy output default, used as fallback for old graphs
+  path_states?: Record<string, boolean>; // per-path output enablement keyed by resolved path
 }
 
 export interface FlowEdge {

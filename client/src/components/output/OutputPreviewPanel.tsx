@@ -5,23 +5,10 @@ export function OutputPreviewPanel() {
   const resolvedPaths = useFlowStore((s) => s.resolvedPaths);
   const pathCount = useFlowStore((s) => s.pathCount);
   const selectNode = useFlowStore((s) => s.selectNode);
-  const flowNodes = useFlowStore((s) => s.flowNodes);
-  const toggleOutputEnabled = useFlowStore((s) => s.toggleOutputEnabled);
+  const setResolvedPathEnabled = useFlowStore((s) => s.setResolvedPathEnabled);
+  const setAllResolvedPathsEnabled = useFlowStore((s) => s.setAllResolvedPathsEnabled);
 
   const enabledCount = resolvedPaths.filter((p) => p.enabled).length;
-
-  // Bulk actions
-  const handleEnableAll = () => {
-    flowNodes.filter((n) => n.type === 'output' && n.enabled === false).forEach((n) => {
-      toggleOutputEnabled(n.id);
-    });
-  };
-
-  const handleDisableAll = () => {
-    flowNodes.filter((n) => n.type === 'output' && n.enabled !== false).forEach((n) => {
-      toggleOutputEnabled(n.id);
-    });
-  };
 
   return (
     <div className="h-full flex flex-col bg-surface-100">
@@ -36,13 +23,13 @@ export function OutputPreviewPanel() {
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={handleEnableAll}
+            onClick={() => void setAllResolvedPathsEnabled(true)}
             className="px-2 py-0.5 rounded text-[10px] text-fg-muted hover:text-foreground hover:bg-surface-300 transition"
           >
             Enable All
           </button>
           <button
-            onClick={handleDisableAll}
+            onClick={() => void setAllResolvedPathsEnabled(false)}
             className="px-2 py-0.5 rounded text-[10px] text-fg-muted hover:text-foreground hover:bg-surface-300 transition"
           >
             Disable All
@@ -66,20 +53,12 @@ export function OutputPreviewPanel() {
               </tr>
             </thead>
             <tbody>
-              {resolvedPaths.map((path, i) => (
+              {resolvedPaths.map((path) => (
                 <OutputRow
-                  key={i}
+                  key={path.pathKey}
                   path={path}
-                  index={i}
-                  onSelect={() => {
-                    // Select the output node (last in path)
-                    const outputNodeId = path.nodeIds[path.nodeIds.length - 1];
-                    selectNode(outputNodeId);
-                  }}
-                  onToggle={() => {
-                    const outputNodeId = path.nodeIds[path.nodeIds.length - 1];
-                    toggleOutputEnabled(outputNodeId);
-                  }}
+                  onSelect={() => selectNode(path.outputNodeId)}
+                  onToggle={() => void setResolvedPathEnabled(path.pathKey, path.outputNodeId, !path.enabled)}
                 />
               ))}
             </tbody>
@@ -91,9 +70,9 @@ export function OutputPreviewPanel() {
 }
 
 function OutputRow({
-  path, index, onSelect, onToggle,
+  path, onSelect, onToggle,
 }: {
-  path: ResolvedPath; index: number; onSelect: () => void; onToggle: () => void;
+  path: ResolvedPath; onSelect: () => void; onToggle: () => void;
 }) {
   return (
     <tr

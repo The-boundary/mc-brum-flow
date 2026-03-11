@@ -2,9 +2,8 @@ import { memo } from 'react';
 import { BaseEdge, getSmoothStepPath, type EdgeProps } from '@xyflow/react';
 
 const COLORS = {
-  camera: '#34d399',   // emerald-400
-  group: '#fb923c',    // orange-400
-  default: '#5acfd9',  // cyan
+  single: '#34d399',
+  grouped: '#fb923c',
 };
 
 export const ColoredEdge = memo(({
@@ -15,7 +14,13 @@ export const ColoredEdge = memo(({
   targetPosition,
   data,
   selected,
-}: EdgeProps & { data?: { sourceType?: string } }) => {
+}: EdgeProps & {
+  data?: {
+    cameraCount?: number;
+    isPathHighlighted?: boolean;
+    isPathDimmed?: boolean;
+  };
+}) => {
   const [edgePath] = getSmoothStepPath({
     sourceX, sourceY,
     targetX, targetY,
@@ -24,10 +29,9 @@ export const ColoredEdge = memo(({
     borderRadius: 8,
   });
 
-  const sourceType = data?.sourceType ?? 'default';
-  const color = sourceType === 'camera' ? COLORS.camera
-    : sourceType === 'group' ? COLORS.group
-    : COLORS.default;
+  const color = (data?.cameraCount ?? 0) > 1 ? COLORS.grouped : COLORS.single;
+  const isPathHighlighted = data?.isPathHighlighted === true;
+  const isPathDimmed = data?.isPathDimmed === true;
 
   return (
     <BaseEdge
@@ -35,8 +39,8 @@ export const ColoredEdge = memo(({
       path={edgePath}
       style={{
         stroke: color,
-        strokeWidth: selected ? 2.5 : 1.5,
-        opacity: selected ? 1 : 0.6,
+        strokeWidth: selected || isPathHighlighted ? 3 : 1.75,
+        opacity: isPathDimmed ? 0.15 : selected || isPathHighlighted ? 1 : 0.75,
       }}
     />
   );

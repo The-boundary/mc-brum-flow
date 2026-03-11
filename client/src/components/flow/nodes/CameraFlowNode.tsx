@@ -6,6 +6,8 @@ import { useFlowStore } from '@/stores/flowStore';
 interface CameraFlowData {
   label: string;
   camera_id?: string;
+  isPathHighlighted?: boolean;
+  isPathDimmed?: boolean;
   [key: string]: unknown;
 }
 
@@ -14,6 +16,8 @@ export const CameraFlowNode = memo(({ id, data }: NodeProps & { data: CameraFlow
   const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
   const cameras = useFlowStore((s) => s.cameras);
   const isSelected = selectedNodeId === id;
+  const isPathHighlighted = data.isPathHighlighted === true;
+  const isPathDimmed = data.isPathDimmed === true;
 
   const camera = data.camera_id ? cameras.find((c) => c.id === data.camera_id) : null;
   const isMissing = data.camera_id && !camera;
@@ -23,8 +27,10 @@ export const CameraFlowNode = memo(({ id, data }: NodeProps & { data: CameraFlow
       className={`rounded-lg border px-3 py-2 min-w-[150px] cursor-pointer transition-all ${
         isSelected
           ? 'border-emerald-400 bg-emerald-400/10 shadow-[0_0_12px_rgba(52,211,153,0.25)]'
+          : isPathHighlighted
+          ? 'border-emerald-400/80 bg-emerald-400/10 shadow-[0_0_10px_rgba(52,211,153,0.18)]'
           : 'border-border bg-surface-200 hover:border-emerald-400/50'
-      }`}
+      } ${isPathDimmed ? 'opacity-30' : ''}`}
       onClick={(e) => { e.stopPropagation(); selectNode(id); }}
     >
       <div className="flex items-center gap-2">

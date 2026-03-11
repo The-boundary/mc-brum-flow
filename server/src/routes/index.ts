@@ -3,6 +3,7 @@ import { dbQuery } from '../services/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 import { pushConfigToMax } from '../services/tcp-bridge.js';
 import { submitDeadlineJob } from '../services/deadline.js';
+import { resolveFlowPaths } from '../services/flowResolver.js';
 
 const router = Router();
 
@@ -199,9 +200,6 @@ router.post('/resolve-paths', async (req: Request, res: Response, next: NextFunc
     const flow = flowResult.rows[0];
     if (!flow) return res.json({ success: true, data: { paths: [], count: 0 } });
 
-    const nodes: Record<string, any> = {};
-    for (const n of flow.nodes) nodes[n.id] = n;
-
     const configs: Record<string, any> = {};
     for (const c of configsResult.rows) configs[c.id] = c;
 
@@ -211,68 +209,7 @@ router.post('/resolve-paths', async (req: Request, res: Response, next: NextFunc
     const defaults: Record<string, any> = {};
     for (const d of defaultsResult.rows) defaults[d.category] = d.settings;
 
-    // Build adjacency list
-    const adj: Record<string, string[]> = {};
-    for (const edge of flow.edges) {
-      if (!adj[edge.source]) adj[edge.source] = [];
-      adj[edge.source].push(edge.target);
-    }
-
-    // Find all camera nodes
-    const cameraNodes = flow.nodes.filter((n: any) => n.type === 'camera');
-
-    // DFS from each camera to find all paths to output nodes
-    const paths: any[] = [];
-
-    function dfs(nodeId: string, path: string[]) {
-      const node = nodes[nodeId];
-      if (!node) return;
-      path.push(nodeId);
-
-      if (node.type === 'output') {
-        const segments: string[] = [];
-        let cameraName = '';
-        let revLabel = '';
-        const resolvedConfig = { ...defaults };
-
-        for (const nid of path) {
-          const n = nodes[nid];
-          if (n.type === 'camera' && n.camera_id) {
-            cameraName = cameras[n.camera_id]?.name ?? n.label;
-          }
-          if (n.type === 'group') {
-            segments.push(n.label);
-          }
-          if (n.type === 'stageRev') {
-            revLabel = n.label;
-          }
-          if (n.config_id && configs[n.config_id]) {
-            Object.assign(resolvedConfig, configs[n.config_id].delta);
-          }
-        }
-
-        const outputConfig = nodes[path[path.length - 1]];
-        const format = outputConfig?.config_id ? (configs[outputConfig.config_id]?.delta?.format ?? 'EXR') : 'EXR';
-        const filename = [...segments, cameraName, revLabel].filter(Boolean).join(' - ') + '.' + format.toLowerCase();
-
-        paths.push({
-          nodeIds: [...path],
-          cameraName,
-          filename,
-          resolvedConfig,
-          enabled: outputConfig?.enabled !== false,
-        });
-      }
-
-      const neighbors = adj[nodeId] ?? [];
-      for (const next of neighbors) {
-        dfs(next, [...path]);
-      }
-    }
-
-    for (const cam of cameraNodes) {
-      dfs(cam.id, []);
-    }
+    const paths = resolveFlowPaths({ flow, configs, cameras, defaults });
 
     res.json({ success: true, data: { paths, count: paths.length } });
   } catch (e) { next(e); }
@@ -299,9 +236,6 @@ router.post('/push-to-max', async (req: Request, res: Response, next: NextFuncti
     const flow = flowResult.rows[0];
     if (!flow) return res.status(404).json({ success: false, error: 'No flow config found' });
 
-    // Quick DFS to find the specific path
-    const nodes: Record<string, any> = {};
-    for (const n of flow.nodes) nodes[n.id] = n;
     const configs: Record<string, any> = {};
     for (const c of configsResult.rows) configs[c.id] = c;
     const cameras: Record<string, any> = {};
@@ -309,38 +243,16 @@ router.post('/push-to-max', async (req: Request, res: Response, next: NextFuncti
     const defaults: Record<string, any> = {};
     for (const d of defaultsResult.rows) defaults[d.category] = d.settings;
 
-    const adj: Record<string, string[]> = {};
-    for (const edge of flow.edges) {
-      if (!adj[edge.source]) adj[edge.source] = [];
-      adj[edge.source].push(edge.target);
-    }
-
-    const cameraNodes = flow.nodes.filter((n: any) => n.type === 'camera');
-    const paths: any[] = [];
-
-    function dfs(nodeId: string, path: string[]) {
-      const node = nodes[nodeId];
-      if (!node) return;
-      path.push(nodeId);
-      if (node.type === 'output') {
-        const resolvedConfig = { ...defaults };
-        let cameraName = '';
-        for (const nid of path) {
-          const n = nodes[nid];
-          if (n.type === 'camera' && n.camera_id) cameraName = cameras[n.camera_id]?.name ?? n.label;
-          if (n.config_id && configs[n.config_id]) Object.assign(resolvedConfig, configs[n.config_id].delta);
-        }
-        paths.push({ cameraName, resolvedConfig });
-      }
-      for (const next of adj[nodeId] ?? []) dfs(next, [...path]);
-    }
-    for (const cam of cameraNodes) dfs(cam.id, []);
+    const paths = resolveFlowPaths({ flow, configs, cameras, defaults });
 
     if (path_index >= paths.length) {
       return res.status(400).json({ success: false, error: `Path index ${path_index} out of range (${paths.length} paths)` });
     }
 
     const targetPath = paths[path_index];
+    if (!targetPath.enabled) {
+      return res.status(400).json({ success: false, error: 'Selected path is disabled' });
+    }
     const result = await pushConfigToMax({
       cameraName: targetPath.cameraName,
       resolvedConfig: targetPath.resolvedConfig,
@@ -372,8 +284,6 @@ router.post('/submit-render', async (req: Request, res: Response, next: NextFunc
     const scene = sceneResult.rows[0];
     if (!flow || !scene) return res.status(404).json({ success: false, error: 'Scene or flow not found' });
 
-    const nodes: Record<string, any> = {};
-    for (const n of flow.nodes) nodes[n.id] = n;
     const configs: Record<string, any> = {};
     for (const c of configsResult.rows) configs[c.id] = c;
     const cameras: Record<string, any> = {};
@@ -381,39 +291,7 @@ router.post('/submit-render', async (req: Request, res: Response, next: NextFunc
     const defaults: Record<string, any> = {};
     for (const d of defaultsResult.rows) defaults[d.category] = d.settings;
 
-    const adj: Record<string, string[]> = {};
-    for (const edge of flow.edges) {
-      if (!adj[edge.source]) adj[edge.source] = [];
-      adj[edge.source].push(edge.target);
-    }
-
-    const cameraNodes = flow.nodes.filter((n: any) => n.type === 'camera');
-    const paths: any[] = [];
-
-    function dfs(nodeId: string, path: string[]) {
-      const node = nodes[nodeId];
-      if (!node) return;
-      path.push(nodeId);
-      if (node.type === 'output') {
-        const segments: string[] = [];
-        let cameraName = '';
-        let revLabel = '';
-        const resolvedConfig = { ...defaults };
-        for (const nid of path) {
-          const n = nodes[nid];
-          if (n.type === 'camera' && n.camera_id) cameraName = cameras[n.camera_id]?.name ?? n.label;
-          if (n.type === 'group') segments.push(n.label);
-          if (n.type === 'stageRev') revLabel = n.label;
-          if (n.config_id && configs[n.config_id]) Object.assign(resolvedConfig, configs[n.config_id].delta);
-        }
-        const format = (resolvedConfig.format as string) ?? 'EXR';
-        const filename = [...segments, cameraName, revLabel].filter(Boolean).join(' - ') + '.' + format.toLowerCase();
-        const enabled = nodes[path[path.length - 1]]?.enabled !== false;
-        paths.push({ cameraName, filename, resolvedConfig, enabled });
-      }
-      for (const next of adj[nodeId] ?? []) dfs(next, [...path]);
-    }
-    for (const cam of cameraNodes) dfs(cam.id, []);
+    const paths = resolveFlowPaths({ flow, configs, cameras, defaults });
 
     const jobIds: { jobId: string }[] = [];
     for (const idx of path_indices) {

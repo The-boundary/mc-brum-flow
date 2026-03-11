@@ -6,6 +6,8 @@ import { useFlowStore } from '@/stores/flowStore';
 interface GroupFlowData {
   label: string;
   hide_previous?: boolean;
+  isPathHighlighted?: boolean;
+  isPathDimmed?: boolean;
   [key: string]: unknown;
 }
 
@@ -15,6 +17,8 @@ export const GroupFlowNode = memo(({ id, data }: NodeProps & { data: GroupFlowDa
   const toggleHidePrevious = useFlowStore((s) => s.toggleHidePrevious);
   const flowEdges = useFlowStore((s) => s.flowEdges);
   const isSelected = selectedNodeId === id;
+  const isPathHighlighted = data.isPathHighlighted === true;
+  const isPathDimmed = data.isPathDimmed === true;
 
   // Count incoming connections
   const incomingCount = flowEdges.filter((e) => e.target === id).length;
@@ -24,8 +28,10 @@ export const GroupFlowNode = memo(({ id, data }: NodeProps & { data: GroupFlowDa
       className={`rounded-lg border px-3 py-2 min-w-[150px] cursor-pointer transition-all ${
         isSelected
           ? 'border-orange-400 bg-orange-400/10 shadow-[0_0_12px_rgba(251,146,60,0.25)]'
+          : isPathHighlighted
+          ? 'border-orange-400/80 bg-orange-400/10 shadow-[0_0_10px_rgba(251,146,60,0.18)]'
           : 'border-border bg-surface-200 hover:border-orange-400/50'
-      }`}
+      } ${isPathDimmed ? 'opacity-30' : ''}`}
       onClick={(e) => { e.stopPropagation(); selectNode(id); }}
     >
       <div className="flex items-center gap-2">

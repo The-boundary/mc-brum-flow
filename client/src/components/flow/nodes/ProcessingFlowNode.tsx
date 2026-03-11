@@ -12,10 +12,21 @@ const NODE_STYLES: Record<string, { color: string; borderSelected: string; bgSel
   deadline:    { color: 'purple', borderSelected: 'border-purple-400', bgSelected: 'bg-purple-400/10', shadow: 'shadow-[0_0_12px_rgba(192,132,252,0.25)]', hoverBorder: 'hover:border-purple-400/50', badgeBg: 'bg-purple-400/15', badgeText: 'text-purple-300', handleBg: '!bg-purple-400', handleBorder: '!border-purple-600', icon: Server, label: 'Deadline' },
 };
 
+const NODE_HIGHLIGHT_STYLES: Record<string, { border: string; bg: string; shadow: string }> = {
+  lightSetup:  { border: 'border-amber-400/80', bg: 'bg-amber-400/10', shadow: 'shadow-[0_0_10px_rgba(251,191,36,0.18)]' },
+  toneMapping: { border: 'border-blue-400/80', bg: 'bg-blue-400/10', shadow: 'shadow-[0_0_10px_rgba(96,165,250,0.18)]' },
+  layerSetup:  { border: 'border-cyan-400/80', bg: 'bg-cyan-400/10', shadow: 'shadow-[0_0_10px_rgba(34,211,238,0.18)]' },
+  aspectRatio: { border: 'border-teal-400/80', bg: 'bg-teal-400/10', shadow: 'shadow-[0_0_10px_rgba(45,212,191,0.18)]' },
+  stageRev:    { border: 'border-green-400/80', bg: 'bg-green-400/10', shadow: 'shadow-[0_0_10px_rgba(74,222,128,0.18)]' },
+  deadline:    { border: 'border-purple-400/80', bg: 'bg-purple-400/10', shadow: 'shadow-[0_0_10px_rgba(192,132,252,0.18)]' },
+};
+
 interface ProcessingFlowData {
   label: string;
   nodeType: string;
   config_id?: string;
+  isPathHighlighted?: boolean;
+  isPathDimmed?: boolean;
   [key: string]: unknown;
 }
 
@@ -24,9 +35,12 @@ export const ProcessingFlowNode = memo(({ id, data, type }: NodeProps & { data: 
   const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
   const nodeConfigs = useFlowStore((s) => s.nodeConfigs);
   const isSelected = selectedNodeId === id;
+  const isPathHighlighted = data.isPathHighlighted === true;
+  const isPathDimmed = data.isPathDimmed === true;
 
   const nodeType = (type as string) || data.nodeType;
   const style = NODE_STYLES[nodeType] ?? NODE_STYLES.lightSetup;
+  const highlightStyle = NODE_HIGHLIGHT_STYLES[nodeType] ?? NODE_HIGHLIGHT_STYLES.lightSetup;
   const Icon = style.icon;
 
   const config = data.config_id ? nodeConfigs.find((c) => c.id === data.config_id) : null;
@@ -37,8 +51,10 @@ export const ProcessingFlowNode = memo(({ id, data, type }: NodeProps & { data: 
       className={`rounded-lg border px-3 py-2 min-w-[150px] cursor-pointer transition-all ${
         isSelected
           ? `${style.borderSelected} ${style.bgSelected} ${style.shadow}`
+          : isPathHighlighted
+          ? `${highlightStyle.border} ${highlightStyle.bg} ${highlightStyle.shadow}`
           : `border-border bg-surface-200 ${style.hoverBorder}`
-      }`}
+      } ${isPathDimmed ? 'opacity-30' : ''}`}
       onClick={(e) => { e.stopPropagation(); selectNode(id); }}
     >
       <div className="flex items-center gap-2">

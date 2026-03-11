@@ -241,7 +241,7 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
 function OutputDetail({ nodeId }: { nodeId: string }) {
   const node = useFlowStore((s) => s.flowNodes.find((n) => n.id === nodeId));
   const nodeConfigs = useFlowStore((s) => s.nodeConfigs);
-  const toggleOutputEnabled = useFlowStore((s) => s.toggleOutputEnabled);
+  const setResolvedPathEnabled = useFlowStore((s) => s.setResolvedPathEnabled);
   const updateNodeLabel = useFlowStore((s) => s.updateNodeLabel);
   const resolvedPaths = useFlowStore((s) => s.resolvedPaths);
 
@@ -249,8 +249,8 @@ function OutputDetail({ nodeId }: { nodeId: string }) {
 
   const config = node.config_id ? nodeConfigs.find((c) => c.id === node.config_id) : null;
   const format = (config?.delta?.format as string) ?? 'EXR';
-  const enabled = node.enabled !== false;
-  const pathsToThis = resolvedPaths.filter((p) => p.nodeIds[p.nodeIds.length - 1] === nodeId);
+  const pathsToThis = resolvedPaths.filter((p) => p.outputNodeId === nodeId);
+  const enabledCount = pathsToThis.filter((path) => path.enabled).length;
 
   return (
     <div className="p-4 space-y-5">
@@ -265,16 +265,10 @@ function OutputDetail({ nodeId }: { nodeId: string }) {
         />
       </Section>
 
-      <Section title="Status">
-        <button
-          onClick={() => toggleOutputEnabled(nodeId)}
-          className="flex items-center gap-2 px-2 py-1.5 rounded bg-surface-300 border border-border text-xs hover:bg-surface-400 transition w-full"
-        >
-          {enabled
-            ? <><ToggleRight className="w-4 h-4 text-emerald-400" /> <span className="text-emerald-300">Enabled</span></>
-            : <><ToggleLeft className="w-4 h-4 text-fg-dim" /> <span className="text-fg-dim">Disabled</span></>
-          }
-        </button>
+      <Section title="Resolved Paths">
+        <div className="text-xs text-fg-dim">
+          {enabledCount} / {pathsToThis.length} active
+        </div>
       </Section>
 
       <Section title="Output Format">
@@ -282,9 +276,25 @@ function OutputDetail({ nodeId }: { nodeId: string }) {
       </Section>
 
       <Section title={`Output Paths (${pathsToThis.length})`}>
-        {pathsToThis.map((p, i) => (
-          <div key={i} className="text-[10px] text-fg-muted py-0.5 font-mono truncate">{p.filename}</div>
-        ))}
+        <div className="space-y-1.5">
+          {pathsToThis.map((path) => (
+            <button
+              key={path.pathKey}
+              onClick={() => void setResolvedPathEnabled(path.pathKey, nodeId, !path.enabled)}
+              className={`flex items-center gap-2 w-full px-2 py-1.5 rounded border text-left transition ${
+                path.enabled
+                  ? 'border-border bg-surface-300 hover:bg-surface-400'
+                  : 'border-border/50 bg-surface-300/50 text-fg-dim hover:bg-surface-400/60'
+              }`}
+            >
+              {path.enabled
+                ? <ToggleRight className="w-4 h-4 text-emerald-400 shrink-0" />
+                : <ToggleLeft className="w-4 h-4 text-fg-dim shrink-0" />
+              }
+              <span className="text-[10px] font-mono truncate">{path.filename}</span>
+            </button>
+          ))}
+        </div>
         {pathsToThis.length === 0 && (
           <div className="text-[10px] text-fg-dim">No paths reach this output</div>
         )}

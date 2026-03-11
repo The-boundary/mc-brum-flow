@@ -1,4 +1,7 @@
 -- Development seed data for flow re-architecture
+-- For the full canonical studio defaults payload, run:
+--   npm run seed:studio-defaults --workspace=server
+-- This file keeps lightweight local defaults for quick bootstrapping.
 SET search_path TO brum_flow;
 
 -- ── Scene ──

@@ -24,6 +24,7 @@ import {
 import { useFlowStore } from '@/stores/flowStore';
 import { nodeTypes } from './nodes';
 import { ColoredEdge } from './ColoredEdge';
+import { getFlowSemantics } from './graphSemantics';
 import type { NodeType } from '@shared/types';
 import { PIPELINE_ORDER, isValidConnection } from '@shared/types';
 
@@ -64,13 +65,18 @@ export function NodeFlowView() {
   const {
     flowNodes, flowEdges: storeEdges, selectedNodeId, viewport,
     selectNode, addNode, addEdge: storeAddEdge, removeNode, removeEdge,
-    updateNodePosition, saveGraph,
+    updateNodePosition, updateViewport, saveGraph,
   } = useFlowStore();
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [autoSuggest, setAutoSuggest] = useState<AutoSuggestState | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reactFlowInstance = useReactFlow();
+  const semantics = useMemo(
+    () => getFlowSemantics(flowNodes, storeEdges, selectedNodeId),
+    [flowNodes, selectedNodeId, storeEdges]
+  );
+  const hasCameraSelection = semantics.selectedCameraNodeId !== null;
 
   // Convert store FlowNodes to ReactFlow Nodes
   const rfNodes: Node[] = useMemo(() =>
@@ -85,24 +91,31 @@ export function NodeFlowView() {
         config_id: n.config_id,
         hide_previous: n.hide_previous,
         enabled: n.enabled,
+        isPathHighlighted: semantics.highlightedNodeIds.has(n.id),
+        isPathDimmed: hasCameraSelection && !semantics.highlightedNodeIds.has(n.id),
       },
     })),
-    [flowNodes]
+    [flowNodes, hasCameraSelection, semantics]
   );
 
   // Convert store FlowEdges to ReactFlow Edges with colored type
   const rfEdges: Edge[] = useMemo(() =>
     storeEdges.map((e) => {
-      const sourceNode = flowNodes.find((n) => n.id === e.source);
+      const cameraCount = semantics.edgeCameraCounts.get(e.id) ?? 0;
+
       return {
         id: e.id,
         source: e.source,
         target: e.target,
         type: 'colored',
-        data: { sourceType: sourceNode?.type ?? 'default' },
+        data: {
+          cameraCount,
+          isPathHighlighted: semantics.highlightedEdgeIds.has(e.id),
+          isPathDimmed: hasCameraSelection && !semantics.highlightedEdgeIds.has(e.id),
+        },
       };
     }),
-    [storeEdges, flowNodes]
+    [hasCameraSelection, semantics, storeEdges]
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);
@@ -246,6 +259,7 @@ export function NodeFlowView() {
         onConnectEnd={onConnectEnd}
         onPaneClick={onPaneClick}
         onPaneContextMenu={onPaneContextMenu}
+        onMoveEnd={(_event, nextViewport) => updateViewport(nextViewport)}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         defaultViewport={viewport}
