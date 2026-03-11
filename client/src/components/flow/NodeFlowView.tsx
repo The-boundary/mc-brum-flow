@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -6,34 +6,30 @@ import {
   MiniMap,
   useNodesState,
   useEdgesState,
-  addEdge,
   type Node,
   type Edge,
   type OnConnect,
-  type NodeTypes,
+  type Connection,
+  type EdgeTypes,
   BackgroundVariant,
+  useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Box, Camera, Palette, Maximize2, FileOutput } from 'lucide-react';
+import {
+  Camera, FolderOpen, Sun, Contrast, Layers,
+  RectangleHorizontal, Gauge, Server, AlertTriangle,
+  FileOutput,
+} from 'lucide-react';
 
 import { useFlowStore } from '@/stores/flowStore';
-import { AssetNode } from './nodes/AssetNode';
-import { CameraNode } from './nodes/CameraNode';
-import { SceneStateNode } from './nodes/SceneStateNode';
-import { ResolutionNode } from './nodes/ResolutionNode';
-import { OutputNode } from './nodes/OutputNode';
+import { nodeTypes } from './nodes';
+import { ColoredEdge } from './ColoredEdge';
+import type { NodeType } from '@shared/types';
+import { PIPELINE_ORDER, isValidConnection } from '@shared/types';
 
-const nodeTypes: NodeTypes = {
-  asset: AssetNode,
-  camera: CameraNode,
-  sceneState: SceneStateNode,
-  resolution: ResolutionNode,
-  output: OutputNode,
+const edgeTypes: EdgeTypes = {
+  colored: ColoredEdge,
 };
-
-const EDGE_DIM = '#1c3a3b';
-const EDGE_DEFAULT = '#2b7a7c';
-const EDGE_HIGHLIGHT = '#5acfd9';
 
 interface ContextMenuState {
   x: number;
@@ -42,229 +38,223 @@ interface ContextMenuState {
   flowY: number;
 }
 
-const CONTEXT_MENU_ITEMS = [
-  { key: 'shot', label: 'Add Shot', icon: Box },
-  { key: 'camera', label: 'Add Camera', icon: Camera },
-  { key: 'sceneState', label: 'Add Scene State', icon: Palette },
-  { key: 'resolution', label: 'Add Resolution', icon: Maximize2 },
-  { key: 'output', label: 'Add Output', icon: FileOutput },
-];
+interface AutoSuggestState {
+  x: number;
+  y: number;
+  flowX: number;
+  flowY: number;
+  sourceNodeId: string;
+  validTypes: NodeType[];
+}
+
+const NODE_TYPE_META: Record<NodeType, { label: string; icon: typeof Camera }> = {
+  camera:      { label: 'Camera',        icon: Camera },
+  group:       { label: 'Group',         icon: FolderOpen },
+  lightSetup:  { label: 'Light Setup',   icon: Sun },
+  toneMapping: { label: 'Tone Mapping',  icon: Contrast },
+  layerSetup:  { label: 'Layer Setup',   icon: Layers },
+  aspectRatio: { label: 'Aspect Ratio',  icon: RectangleHorizontal },
+  stageRev:    { label: 'Stage Rev',     icon: Gauge },
+  override:    { label: 'Override',      icon: AlertTriangle },
+  deadline:    { label: 'Deadline',      icon: Server },
+  output:      { label: 'Output',        icon: FileOutput },
+};
 
 export function NodeFlowView() {
-  const { shots, containers, cameras, sceneStates, selectedShotId, selectNode } = useFlowStore();
+  const {
+    flowNodes, flowEdges: storeEdges, selectedNodeId, viewport,
+    selectNode, addNode, addEdge: storeAddEdge, removeNode, removeEdge,
+    updateNodePosition, saveGraph,
+  } = useFlowStore();
+
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [autoSuggest, setAutoSuggest] = useState<AutoSuggestState | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reactFlowInstance = useReactFlow();
 
-  // Build the set of node IDs in the selected shot's pipe
-  const selectedPipeNodeIds = useMemo(() => {
-    if (!selectedShotId) return new Set<string>();
-    const shot = shots.find((s) => s.id === selectedShotId);
-    if (!shot) return new Set<string>();
-    const container = containers.find((c) => c.id === shot.containerId);
-    const stateId = shot.sceneStateId ?? container?.sceneStateId;
-    const res = `${shot.resolutionWidth}x${shot.resolutionHeight}`;
-    const ids = new Set<string>();
-    ids.add(`asset-${shot.id}`);
-    ids.add(`camera-${shot.cameraId}`);
-    if (stateId) ids.add(`state-${stateId}`);
-    ids.add(`res-${res}`);
-    ids.add(`output-${shot.id}`);
-    return ids;
-  }, [selectedShotId, shots, containers]);
-
-  // Build nodes and edges from data model
-  const { initialNodes, initialEdges } = useMemo(() => {
-    const nodes: Node[] = [];
-    const edges: Edge[] = [];
-
-    // Asset nodes (left column) — one per shot
-    shots.forEach((shot, i) => {
-      const container = containers.find((c) => c.id === shot.containerId);
-      const inPipe = selectedPipeNodeIds.has(`asset-${shot.id}`);
-      const dimmed = selectedShotId !== null && !inPipe;
-      nodes.push({
-        id: `asset-${shot.id}`,
-        type: 'asset',
-        position: { x: 0, y: i * 120 },
-        data: { label: shot.name, shotId: shot.id, containerName: container?.name ?? '', dimmed },
-      });
-    });
-
-    // Camera nodes (second column) — deduplicated
-    const usedCameraIds = [...new Set(shots.map((s) => s.cameraId))];
-    usedCameraIds.forEach((camId, i) => {
-      const cam = cameras.find((c) => c.id === camId);
-      const inPipe = selectedPipeNodeIds.has(`camera-${camId}`);
-      const dimmed = selectedShotId !== null && !inPipe;
-      nodes.push({
-        id: `camera-${camId}`,
-        type: 'camera',
-        position: { x: 300, y: i * 120 },
-        data: { label: cam?.name ?? camId, cameraId: camId, dimmed },
-      });
-    });
-
-    // Scene State nodes (third column) — deduplicated
-    const usedStateIds = [...new Set(containers.map((c) => c.sceneStateId))];
-    usedStateIds.forEach((stateId, i) => {
-      const state = sceneStates.find((s) => s.id === stateId);
-      const inPipe = selectedPipeNodeIds.has(`state-${stateId}`);
-      const dimmed = selectedShotId !== null && !inPipe;
-      nodes.push({
-        id: `state-${stateId}`,
-        type: 'sceneState',
-        position: { x: 600, y: i * 120 },
-        data: { label: state?.name ?? stateId, stateId, color: state?.color ?? 'teal', dimmed },
-      });
-    });
-
-    // Resolution nodes (fourth column) — deduplicated
-    const resolutions = [...new Set(shots.map((s) => `${s.resolutionWidth}x${s.resolutionHeight}`))];
-    resolutions.forEach((res, i) => {
-      const inPipe = selectedPipeNodeIds.has(`res-${res}`);
-      const dimmed = selectedShotId !== null && !inPipe;
-      nodes.push({
-        id: `res-${res}`,
-        type: 'resolution',
-        position: { x: 900, y: i * 120 },
-        data: { label: res, resolution: res, dimmed },
-      });
-    });
-
-    // Output nodes (right column) — one per shot
-    shots.forEach((shot, i) => {
-      const inPipe = selectedPipeNodeIds.has(`output-${shot.id}`);
-      const dimmed = selectedShotId !== null && !inPipe;
-      nodes.push({
-        id: `output-${shot.id}`,
-        type: 'output',
-        position: { x: 1200, y: i * 120 },
-        data: { label: `${shot.name}.${shot.outputFormat.toLowerCase()}`, shotId: shot.id, format: shot.outputFormat, dimmed },
-      });
-    });
-
-    // Edges: asset → camera
-    shots.forEach((shot) => {
-      const inPipe = selectedShotId === shot.id;
-      const dimmed = selectedShotId !== null && !inPipe;
-      edges.push({
-        id: `e-asset-cam-${shot.id}`,
-        source: `asset-${shot.id}`,
-        target: `camera-${shot.cameraId}`,
-        animated: inPipe,
-        style: { stroke: inPipe ? EDGE_HIGHLIGHT : dimmed ? EDGE_DIM : EDGE_DEFAULT, strokeWidth: inPipe ? 2.5 : 1 },
-      });
-    });
-
-    // Edges: camera → scene state
-    shots.forEach((shot) => {
-      const container = containers.find((c) => c.id === shot.containerId);
-      const stateId = shot.sceneStateId ?? container?.sceneStateId;
-      if (stateId) {
-        const inPipe = selectedShotId === shot.id;
-        const dimmed = selectedShotId !== null && !inPipe;
-        edges.push({
-          id: `e-cam-state-${shot.id}`,
-          source: `camera-${shot.cameraId}`,
-          target: `state-${stateId}`,
-          animated: inPipe,
-          style: { stroke: inPipe ? EDGE_HIGHLIGHT : dimmed ? EDGE_DIM : EDGE_DEFAULT, strokeWidth: inPipe ? 2.5 : 1 },
-        });
-      }
-    });
-
-    // Edges: scene state → resolution
-    shots.forEach((shot) => {
-      const container = containers.find((c) => c.id === shot.containerId);
-      const stateId = shot.sceneStateId ?? container?.sceneStateId;
-      const res = `${shot.resolutionWidth}x${shot.resolutionHeight}`;
-      if (stateId) {
-        const inPipe = selectedShotId === shot.id;
-        const dimmed = selectedShotId !== null && !inPipe;
-        edges.push({
-          id: `e-state-res-${shot.id}`,
-          source: `state-${stateId}`,
-          target: `res-${res}`,
-          animated: inPipe,
-          style: { stroke: inPipe ? EDGE_HIGHLIGHT : dimmed ? EDGE_DIM : EDGE_DEFAULT, strokeWidth: inPipe ? 2.5 : 1 },
-        });
-      }
-    });
-
-    // Edges: resolution → output
-    shots.forEach((shot) => {
-      const res = `${shot.resolutionWidth}x${shot.resolutionHeight}`;
-      const inPipe = selectedShotId === shot.id;
-      const dimmed = selectedShotId !== null && !inPipe;
-      edges.push({
-        id: `e-res-out-${shot.id}`,
-        source: `res-${res}`,
-        target: `output-${shot.id}`,
-        animated: inPipe,
-        style: { stroke: inPipe ? EDGE_HIGHLIGHT : dimmed ? EDGE_DIM : EDGE_DEFAULT, strokeWidth: inPipe ? 2.5 : 1 },
-      });
-    });
-
-    return { initialNodes: nodes, initialEdges: edges };
-  }, [shots, containers, cameras, sceneStates, selectedShotId, selectedPipeNodeIds]);
-
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [flowEdges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-
-  // Sync when store data changes
-  useEffect(() => { setNodes(initialNodes); }, [initialNodes, setNodes]);
-  useEffect(() => { setEdges(initialEdges); }, [initialEdges, setEdges]);
-
-  const onConnect: OnConnect = useCallback(
-    (params) => setEdges((eds) => addEdge({ ...params, style: { stroke: '#5acfd9' } }, eds)),
-    [setEdges]
+  // Convert store FlowNodes to ReactFlow Nodes
+  const rfNodes: Node[] = useMemo(() =>
+    flowNodes.map((n) => ({
+      id: n.id,
+      type: n.type,
+      position: n.position,
+      data: {
+        label: n.label,
+        nodeType: n.type,
+        camera_id: n.camera_id,
+        config_id: n.config_id,
+        hide_previous: n.hide_previous,
+        enabled: n.enabled,
+      },
+    })),
+    [flowNodes]
   );
+
+  // Convert store FlowEdges to ReactFlow Edges with colored type
+  const rfEdges: Edge[] = useMemo(() =>
+    storeEdges.map((e) => {
+      const sourceNode = flowNodes.find((n) => n.id === e.source);
+      return {
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        type: 'colored',
+        data: { sourceType: sourceNode?.type ?? 'default' },
+      };
+    }),
+    [storeEdges, flowNodes]
+  );
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(rfEdges);
+
+  // Sync when store changes
+  useEffect(() => { setNodes(rfNodes); }, [rfNodes, setNodes]);
+  useEffect(() => { setEdges(rfEdges); }, [rfEdges, setEdges]);
+
+  // Auto-save after changes (debounced)
+  const scheduleSave = useCallback(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => saveGraph(), 2000);
+  }, [saveGraph]);
+
+  // Handle node position changes
+  const handleNodesChange = useCallback((changes: any) => {
+    onNodesChange(changes);
+    for (const change of changes) {
+      if (change.type === 'position' && change.position && !change.dragging) {
+        updateNodePosition(change.id, change.position);
+        scheduleSave();
+      }
+    }
+  }, [onNodesChange, updateNodePosition, scheduleSave]);
+
+  // Handle new connections with pipeline validation
+  const onConnect: OnConnect = useCallback((params: Connection) => {
+    if (!params.source || !params.target) return;
+    const success = storeAddEdge(params.source, params.target);
+    if (success) scheduleSave();
+  }, [storeAddEdge, scheduleSave]);
+
+  // Auto-suggest: when user drops a connection on empty canvas
+  const onConnectEnd = useCallback((event: MouseEvent | TouchEvent) => {
+    const target = event.target as HTMLElement;
+    // Only show if dropped on the pane (not on a node)
+    if (target.classList.contains('react-flow__pane') || target.closest('.react-flow__pane')) {
+      // Find the connection source from the connecting state
+      const connectingState = reactFlowInstance.toObject();
+      // Get position from mouse/touch event
+      const clientX = 'clientX' in event ? event.clientX : event.touches?.[0]?.clientX ?? 0;
+      const clientY = 'clientY' in event ? event.clientY : event.touches?.[0]?.clientY ?? 0;
+      const flowPos = reactFlowInstance.screenToFlowPosition({ x: clientX, y: clientY });
+
+      // Find which node was the source of the drag
+      // React Flow stores this internally - we check which handles were being dragged
+      const draggingNode = connectingState.nodes.find((n: any) =>
+        n.selected || document.querySelector(`[data-id="${n.id}"] .source.connecting`)
+      );
+
+      if (draggingNode) {
+        const sourceType = draggingNode.type as NodeType;
+        const validTypes = [...PIPELINE_ORDER, 'override' as NodeType].filter((t) =>
+          isValidConnection(sourceType, t)
+        );
+
+        if (validTypes.length > 0) {
+          setAutoSuggest({
+            x: clientX,
+            y: clientY,
+            flowX: flowPos.x,
+            flowY: flowPos.y,
+            sourceNodeId: draggingNode.id,
+            validTypes,
+          });
+        }
+      }
+    }
+  }, [reactFlowInstance]);
 
   // Click on background deselects
   const onPaneClick = useCallback(() => {
-    selectNode(null, null);
+    selectNode(null);
     setContextMenu(null);
+    setAutoSuggest(null);
   }, [selectNode]);
 
   // Right-click context menu
   const onPaneContextMenu = useCallback((event: MouseEvent | React.MouseEvent) => {
     event.preventDefault();
+    const flowPos = reactFlowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY });
     setContextMenu({
       x: event.clientX,
       y: event.clientY,
-      flowX: 0,
-      flowY: 0,
+      flowX: flowPos.x,
+      flowY: flowPos.y,
     });
-  }, []);
+    setAutoSuggest(null);
+  }, [reactFlowInstance]);
 
-  // Close context menu on click anywhere
+  // Close menus on click
   useEffect(() => {
-    if (!contextMenu) return;
-    const handler = () => setContextMenu(null);
+    if (!contextMenu && !autoSuggest) return;
+    const handler = () => {
+      setContextMenu(null);
+      setAutoSuggest(null);
+    };
     window.addEventListener('click', handler);
     return () => window.removeEventListener('click', handler);
-  }, [contextMenu]);
+  }, [contextMenu, autoSuggest]);
 
-  const handleContextAction = useCallback((_key: string) => {
-    // TODO: wire up creation dialogs
+  // Delete selected node on Delete key
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId) {
+        removeNode(selectedNodeId);
+        scheduleSave();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectedNodeId, removeNode, scheduleSave]);
+
+  const handleAddNode = useCallback((type: NodeType, x: number, y: number, sourceId?: string) => {
+    addNode(type, { x, y });
+    // If adding from auto-suggest, also connect
+    if (sourceId) {
+      const newNodes = useFlowStore.getState().flowNodes;
+      const newest = newNodes[newNodes.length - 1];
+      if (newest) {
+        storeAddEdge(sourceId, newest.id);
+      }
+    }
+    scheduleSave();
     setContextMenu(null);
-  }, []);
+    setAutoSuggest(null);
+  }, [addNode, storeAddEdge, scheduleSave]);
+
+  // All node types for context menu
+  const allNodeTypes = Object.entries(NODE_TYPE_META);
 
   return (
     <div className="w-full h-full relative">
       <ReactFlow
         nodes={nodes}
-        edges={flowEdges}
-        onNodesChange={onNodesChange}
+        edges={edges}
+        onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onConnectEnd={onConnectEnd}
         onPaneClick={onPaneClick}
         onPaneContextMenu={onPaneContextMenu}
         nodeTypes={nodeTypes}
-        fitView
-        minZoom={0.2}
-        maxZoom={2}
+        edgeTypes={edgeTypes}
+        defaultViewport={viewport}
+        fitView={!flowNodes.length}
+        minZoom={0.1}
+        maxZoom={3}
         snapToGrid
         snapGrid={[20, 20]}
+        deleteKeyCode={null}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(190 12% 20%)" />
@@ -281,17 +271,42 @@ export function NodeFlowView() {
         <div
           className="fixed z-50 bg-surface-200 border border-border rounded-lg shadow-xl py-1 min-w-[180px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
         >
-          {CONTEXT_MENU_ITEMS.map((item) => (
+          {allNodeTypes.map(([type, meta]) => (
             <button
-              key={item.key}
-              onClick={() => handleContextAction(item.key)}
+              key={type}
+              onClick={() => handleAddNode(type as NodeType, contextMenu.flowX, contextMenu.flowY)}
               className="flex items-center gap-2.5 w-full px-3 py-1.5 text-xs text-foreground hover:bg-surface-300 transition-colors text-left"
             >
-              <item.icon className="w-3.5 h-3.5 text-muted-foreground" />
-              {item.label}
+              <meta.icon className="w-3.5 h-3.5 text-muted-foreground" />
+              {meta.label}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Auto-suggest dropdown on connection drop */}
+      {autoSuggest && (
+        <div
+          className="fixed z-50 bg-surface-200 border border-border rounded-lg shadow-xl py-1 min-w-[180px]"
+          style={{ left: autoSuggest.x, top: autoSuggest.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-3 py-1 text-[10px] text-fg-dim uppercase tracking-wider">Add & Connect</div>
+          {autoSuggest.validTypes.map((type) => {
+            const meta = NODE_TYPE_META[type];
+            return (
+              <button
+                key={type}
+                onClick={() => handleAddNode(type, autoSuggest.flowX, autoSuggest.flowY, autoSuggest.sourceNodeId)}
+                className="flex items-center gap-2.5 w-full px-3 py-1.5 text-xs text-foreground hover:bg-surface-300 transition-colors text-left"
+              >
+                <meta.icon className="w-3.5 h-3.5 text-muted-foreground" />
+                {meta.label}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

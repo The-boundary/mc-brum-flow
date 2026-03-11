@@ -1,18 +1,19 @@
 import { useEffect, useState, useRef, type ReactNode } from 'react';
 import {
   Workflow, List, PanelRightOpen, PanelRightClose, Loader2,
-  Plus, LayoutGrid, ZoomIn, ZoomOut, Maximize2,
-  Box, Camera, Palette, FileOutput, MonitorDot,
+  Plus, LayoutGrid, MonitorDot, BarChart3,
 } from 'lucide-react';
+import { ReactFlowProvider } from '@xyflow/react';
 import { useUiStore } from '@/stores/uiStore';
 import { useFlowStore } from '@/stores/flowStore';
 import { NodeFlowView } from '@/components/flow/NodeFlowView';
 import { MatrixView } from '@/components/matrix/MatrixView';
 import { DetailPanel } from '@/components/detail/DetailPanel';
+import { OutputPreviewPanel } from '@/components/output/OutputPreviewPanel';
 
 export default function BrumFlowPage() {
-  const { viewMode, setViewMode, detailPanelOpen, toggleDetailPanel } = useUiStore();
-  const { loading, error, scenes, activeSceneId, setActiveScene, loadAll, initSocket } = useFlowStore();
+  const { viewMode, setViewMode, detailPanelOpen, toggleDetailPanel, outputPanelOpen, toggleOutputPanel } = useUiStore();
+  const { loading, error, scenes, activeSceneId, setActiveScene, loadAll, initSocket, pathCount } = useFlowStore();
 
   useEffect(() => {
     loadAll();
@@ -54,7 +55,7 @@ export default function BrumFlowPage() {
                   : 'text-muted-foreground hover:text-foreground hover:bg-surface-200/50'
               }`}
             >
-              <MonitorDot className={`w-3 h-3 ${scene.isActive ? 'text-green-400' : 'text-muted-foreground'}`} />
+              <MonitorDot className={`w-3 h-3 ${scene.is_active ? 'text-green-400' : 'text-muted-foreground'}`} />
               <span className="truncate max-w-[200px]">{scene.name}</span>
             </button>
           ))}
@@ -69,15 +70,21 @@ export default function BrumFlowPage() {
         <div className="h-10 border-b border-border flex items-center justify-between px-3 shrink-0">
           {/* Left: toolbar actions */}
           <div className="flex items-center gap-1">
-            <ToolbarButton icon={Box} tooltip="Add Shot" />
-            <ToolbarButton icon={Camera} tooltip="Add Camera" />
-            <ToolbarButton icon={Palette} tooltip="Add Scene State" />
-            <ToolbarButton icon={FileOutput} tooltip="Add Output" />
-            <div className="w-px h-5 bg-border mx-1" />
             <ToolbarButton icon={LayoutGrid} tooltip="Auto Layout" />
-            <ToolbarButton icon={ZoomIn} tooltip="Zoom In" />
-            <ToolbarButton icon={ZoomOut} tooltip="Zoom Out" />
-            <ToolbarButton icon={Maximize2} tooltip="Fit to View" />
+            <div className="w-px h-5 bg-border mx-1" />
+            <Tooltip text={`Output Preview (${pathCount} paths)`}>
+              <button
+                onClick={toggleOutputPanel}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition ${
+                  outputPanelOpen
+                    ? 'bg-brand/15 text-brand'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-surface-300'
+                }`}
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                <span>{pathCount} paths</span>
+              </button>
+            </Tooltip>
           </div>
 
           {/* Right: view toggle + detail panel */}
@@ -126,8 +133,17 @@ export default function BrumFlowPage() {
         </div>
 
         {/* View content */}
-        <div className="flex-1 min-h-0">
-          {viewMode === 'flow' ? <NodeFlowView /> : <MatrixView />}
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="flex-1 min-h-0">
+            <ReactFlowProvider>
+              {viewMode === 'flow' ? <NodeFlowView /> : <MatrixView />}
+            </ReactFlowProvider>
+          </div>
+          {outputPanelOpen && (
+            <div className="h-[280px] shrink-0 border-t border-border overflow-y-auto">
+              <OutputPreviewPanel />
+            </div>
+          )}
         </div>
       </div>
 
