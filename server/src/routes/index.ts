@@ -1,287 +1,279 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import { dbQuery } from '../services/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
-import { logger } from '../utils/logger.js';
-import type { Server as SocketServer } from 'socket.io';
 
 const router = Router();
 
-function getIO(req: Request): SocketServer {
-  return req.app.get('io') as SocketServer;
-}
+// ── Health (no auth) ──
 
-router.get('/health', async (_req, res) => {
-  let database: 'not_configured' | 'ok' | 'error' = 'not_configured';
+router.get('/health', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     await dbQuery('SELECT 1');
-    database = 'ok';
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    database = msg.includes('not configured') ? 'not_configured' : 'error';
-  }
-  res.json({ status: 'ok', timestamp: new Date().toISOString(), uptime: process.uptime(), database });
+    res.json({ success: true, status: 'healthy' });
+  } catch (e) { next(e); }
 });
 
 // All routes below require auth
 router.use(requireAuth);
 
-// ── Scenes (3ds Max instances) ──
+// ── Scenes ──
 
-router.get('/scenes', async (_req: Request, res: Response) => {
+router.get('/scenes', async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await dbQuery('SELECT * FROM scenes ORDER BY created_at');
-    res.json({ success: true, data: result.rows });
-  } catch (err) {
-    logger.error({ err }, 'Failed to load scenes');
-    res.status(500).json({ success: false, error: 'Failed to load scenes' });
-  }
+    const { rows } = await dbQuery('SELECT * FROM scenes ORDER BY created_at');
+    res.json({ success: true, data: rows });
+  } catch (e) { next(e); }
 });
 
-router.post('/scenes', async (req: Request, res: Response) => {
-  const { name, file_path, instance_host } = req.body;
+router.post('/scenes', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await dbQuery(
-      `INSERT INTO scenes (name, file_path, instance_host) VALUES ($1,$2,$3) RETURNING *`,
-      [name, file_path || '', instance_host || '']
+    const { name, file_path = '', instance_host = '' } = req.body;
+    const { rows } = await dbQuery(
+      'INSERT INTO scenes (name, file_path, instance_host) VALUES ($1, $2, $3) RETURNING *',
+      [name, file_path, instance_host]
     );
-    getIO(req).emit('scene:created', result.rows[0]);
-    res.json({ success: true, data: result.rows[0] });
-  } catch (err) {
-    logger.error({ err }, 'Failed to create scene');
-    res.status(500).json({ success: false, error: 'Failed to create scene' });
-  }
+    req.app.get('io')?.emit('scene:created', rows[0]);
+    res.status(201).json({ success: true, data: rows[0] });
+  } catch (e) { next(e); }
 });
 
-router.delete('/scenes/:id', async (req: Request, res: Response) => {
-  const { id } = req.params;
+router.delete('/scenes/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await dbQuery('DELETE FROM scenes WHERE id=$1', [id]);
-    getIO(req).emit('scene:deleted', { id });
+    await dbQuery('DELETE FROM scenes WHERE id = $1', [req.params.id]);
+    req.app.get('io')?.emit('scene:deleted', { id: req.params.id });
     res.json({ success: true });
-  } catch (err) {
-    logger.error({ err }, 'Failed to delete scene');
-    res.status(500).json({ success: false, error: 'Failed to delete scene' });
-  }
+  } catch (e) { next(e); }
 });
 
-// ── Scene States ──
+// ── Studio Defaults ──
 
-router.get('/scene-states', async (_req: Request, res: Response) => {
+router.get('/studio-defaults', async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await dbQuery('SELECT * FROM scene_states ORDER BY name');
-    res.json({ success: true, data: result.rows });
-  } catch (err) {
-    logger.error({ err }, 'Failed to load scene states');
-    res.status(500).json({ success: false, error: 'Failed to load scene states' });
-  }
+    const { rows } = await dbQuery('SELECT * FROM studio_defaults ORDER BY category');
+    res.json({ success: true, data: rows });
+  } catch (e) { next(e); }
 });
 
-router.post('/scene-states', async (req: Request, res: Response) => {
-  const { name, environment, lighting, render_passes, noise_threshold, denoiser, layers, render_elements, color } = req.body;
+router.put('/studio-defaults/:category', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await dbQuery(
-      `INSERT INTO scene_states (name, environment, lighting, render_passes, noise_threshold, denoiser, layers, render_elements, color)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [name, environment || '', lighting || '', render_passes || 20, noise_threshold || 0.2, denoiser || 'Intel OIDN', layers || '{}', render_elements || '{}', color || 'teal']
+    const { settings } = req.body;
+    const { rows } = await dbQuery(
+      'UPDATE studio_defaults SET settings = $1, updated_at = NOW() WHERE category = $2 RETURNING *',
+      [JSON.stringify(settings), req.params.category]
     );
-    const row = result.rows[0];
-    getIO(req).emit('scene-state:created', row);
-    res.json({ success: true, data: row });
-  } catch (err) {
-    logger.error({ err }, 'Failed to create scene state');
-    res.status(500).json({ success: false, error: 'Failed to create scene state' });
-  }
+    if (rows.length === 0) return res.status(404).json({ success: false, error: 'Category not found' });
+    req.app.get('io')?.emit('studio-defaults:updated', rows[0]);
+    res.json({ success: true, data: rows[0] });
+  } catch (e) { next(e); }
 });
 
-router.put('/scene-states/:id', async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const { name, environment, lighting, render_passes, noise_threshold, denoiser, layers, render_elements, color } = req.body;
+// ── Node Configs (presets) ──
+
+router.get('/node-configs', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await dbQuery(
-      `UPDATE scene_states SET name=$1, environment=$2, lighting=$3, render_passes=$4, noise_threshold=$5, denoiser=$6, layers=$7, render_elements=$8, color=$9, updated_at=NOW()
-       WHERE id=$10 RETURNING *`,
-      [name, environment, lighting, render_passes, noise_threshold, denoiser, layers, render_elements, color, id]
+    const { node_type } = req.query;
+    const where = node_type ? 'WHERE node_type = $1' : '';
+    const params = node_type ? [node_type] : [];
+    const { rows } = await dbQuery(`SELECT * FROM node_configs ${where} ORDER BY node_type, label`, params);
+    res.json({ success: true, data: rows });
+  } catch (e) { next(e); }
+});
+
+router.post('/node-configs', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { node_type, label, delta = {} } = req.body;
+    const { rows } = await dbQuery(
+      'INSERT INTO node_configs (node_type, label, delta) VALUES ($1, $2, $3) RETURNING *',
+      [node_type, label, JSON.stringify(delta)]
     );
-    if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Not found' });
-    getIO(req).emit('scene-state:updated', result.rows[0]);
-    res.json({ success: true, data: result.rows[0] });
-  } catch (err) {
-    logger.error({ err }, 'Failed to update scene state');
-    res.status(500).json({ success: false, error: 'Failed to update scene state' });
-  }
+    req.app.get('io')?.emit('node-config:created', rows[0]);
+    res.status(201).json({ success: true, data: rows[0] });
+  } catch (e) { next(e); }
+});
+
+router.put('/node-configs/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { label, delta } = req.body;
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    let i = 1;
+    if (label !== undefined) { sets.push(`label = $${i++}`); params.push(label); }
+    if (delta !== undefined) { sets.push(`delta = $${i++}`); params.push(JSON.stringify(delta)); }
+    sets.push(`updated_at = NOW()`);
+    params.push(req.params.id);
+    const { rows } = await dbQuery(
+      `UPDATE node_configs SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+      params
+    );
+    if (rows.length === 0) return res.status(404).json({ success: false, error: 'Not found' });
+    req.app.get('io')?.emit('node-config:updated', rows[0]);
+    res.json({ success: true, data: rows[0] });
+  } catch (e) { next(e); }
+});
+
+router.delete('/node-configs/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await dbQuery('DELETE FROM node_configs WHERE id = $1', [req.params.id]);
+    req.app.get('io')?.emit('node-config:deleted', { id: req.params.id });
+    res.json({ success: true });
+  } catch (e) { next(e); }
 });
 
 // ── Cameras ──
 
-router.get('/cameras', async (req: Request, res: Response) => {
-  const sceneId = req.query.scene_id as string | undefined;
+router.get('/cameras', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = sceneId
-      ? await dbQuery('SELECT * FROM cameras WHERE scene_id=$1 ORDER BY name', [sceneId])
-      : await dbQuery('SELECT * FROM cameras ORDER BY name');
-    res.json({ success: true, data: result.rows });
-  } catch (err) {
-    logger.error({ err }, 'Failed to load cameras');
-    res.status(500).json({ success: false, error: 'Failed to load cameras' });
-  }
+    const { scene_id } = req.query;
+    const where = scene_id ? 'WHERE scene_id = $1' : '';
+    const params = scene_id ? [scene_id] : [];
+    const { rows } = await dbQuery(`SELECT * FROM cameras ${where} ORDER BY name`, params);
+    res.json({ success: true, data: rows });
+  } catch (e) { next(e); }
 });
 
-// ── Containers ──
-
-router.get('/containers', async (req: Request, res: Response) => {
-  const sceneId = req.query.scene_id as string | undefined;
+router.post('/cameras', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = sceneId
-      ? await dbQuery('SELECT * FROM containers WHERE scene_id=$1 ORDER BY sort_order, name', [sceneId])
-      : await dbQuery('SELECT * FROM containers ORDER BY sort_order, name');
-    res.json({ success: true, data: result.rows });
-  } catch (err) {
-    logger.error({ err }, 'Failed to load containers');
-    res.status(500).json({ success: false, error: 'Failed to load containers' });
-  }
-});
-
-router.post('/containers', async (req: Request, res: Response) => {
-  const { name, parent_id, scene_state_id, output_path_template, sort_order } = req.body;
-  try {
-    const result = await dbQuery(
-      `INSERT INTO containers (name, parent_id, scene_state_id, output_path_template, sort_order)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [name, parent_id || null, scene_state_id, output_path_template || '/renders/{container}/{shot}/', sort_order || 0]
+    const { scene_id, name, max_handle, max_class = '' } = req.body;
+    const { rows } = await dbQuery(
+      `INSERT INTO cameras (scene_id, name, max_handle, max_class)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (scene_id, max_handle) DO UPDATE SET name = $2, max_class = $4, updated_at = NOW()
+       RETURNING *`,
+      [scene_id, name, max_handle, max_class]
     );
-    getIO(req).emit('container:created', result.rows[0]);
-    res.json({ success: true, data: result.rows[0] });
-  } catch (err) {
-    logger.error({ err }, 'Failed to create container');
-    res.status(500).json({ success: false, error: 'Failed to create container' });
-  }
+    req.app.get('io')?.emit('camera:upserted', rows[0]);
+    res.status(201).json({ success: true, data: rows[0] });
+  } catch (e) { next(e); }
 });
 
-router.put('/containers/:id', async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const { name, parent_id, scene_state_id, output_path_template, sort_order } = req.body;
+router.delete('/cameras/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await dbQuery(
-      `UPDATE containers SET name=$1, parent_id=$2, scene_state_id=$3, output_path_template=$4, sort_order=$5, updated_at=NOW()
-       WHERE id=$6 RETURNING *`,
-      [name, parent_id, scene_state_id, output_path_template, sort_order, id]
-    );
-    if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Not found' });
-    getIO(req).emit('container:updated', result.rows[0]);
-    res.json({ success: true, data: result.rows[0] });
-  } catch (err) {
-    logger.error({ err }, 'Failed to update container');
-    res.status(500).json({ success: false, error: 'Failed to update container' });
-  }
-});
-
-router.delete('/containers/:id', async (req: Request, res: Response) => {
-  const { id } = req.params;
-  try {
-    await dbQuery('DELETE FROM containers WHERE id=$1', [id]);
-    getIO(req).emit('container:deleted', { id });
+    await dbQuery('DELETE FROM cameras WHERE id = $1', [req.params.id]);
+    req.app.get('io')?.emit('camera:deleted', { id: req.params.id });
     res.json({ success: true });
-  } catch (err) {
-    logger.error({ err }, 'Failed to delete container');
-    res.status(500).json({ success: false, error: 'Failed to delete container' });
-  }
-});
-
-// ── Shots ──
-
-router.get('/shots', async (req: Request, res: Response) => {
-  const sceneId = req.query.scene_id as string | undefined;
-  try {
-    const result = sceneId
-      ? await dbQuery(
-          `SELECT s.* FROM shots s JOIN containers c ON s.container_id = c.id WHERE c.scene_id=$1 ORDER BY s.sort_order, s.name`,
-          [sceneId]
-        )
-      : await dbQuery('SELECT * FROM shots ORDER BY sort_order, name');
-    res.json({ success: true, data: result.rows });
-  } catch (err) {
-    logger.error({ err }, 'Failed to load shots');
-    res.status(500).json({ success: false, error: 'Failed to load shots' });
-  }
-});
-
-router.post('/shots', async (req: Request, res: Response) => {
-  const { name, container_id, camera_id, resolution_width, resolution_height, scene_state_id, overrides, output_path, output_format, enabled, sort_order } = req.body;
-  try {
-    const result = await dbQuery(
-      `INSERT INTO shots (name, container_id, camera_id, resolution_width, resolution_height, scene_state_id, overrides, output_path, output_format, enabled, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11) RETURNING *`,
-      [name, container_id, camera_id, resolution_width || 3840, resolution_height || 2160, scene_state_id || null, JSON.stringify(overrides || {}), output_path || '', output_format || 'EXR', enabled !== false, sort_order || 0]
-    );
-    getIO(req).emit('shot:created', result.rows[0]);
-    res.json({ success: true, data: result.rows[0] });
-  } catch (err) {
-    logger.error({ err }, 'Failed to create shot');
-    res.status(500).json({ success: false, error: 'Failed to create shot' });
-  }
-});
-
-router.put('/shots/:id', async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const { name, container_id, camera_id, resolution_width, resolution_height, scene_state_id, overrides, output_path, output_format, enabled, sort_order } = req.body;
-  try {
-    const result = await dbQuery(
-      `UPDATE shots SET name=$1, container_id=$2, camera_id=$3, resolution_width=$4, resolution_height=$5, scene_state_id=$6, overrides=$7::jsonb, output_path=$8, output_format=$9, enabled=$10, sort_order=$11, updated_at=NOW()
-       WHERE id=$12 RETURNING *`,
-      [name, container_id, camera_id, resolution_width, resolution_height, scene_state_id, JSON.stringify(overrides || {}), output_path, output_format, enabled, sort_order, id]
-    );
-    if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Not found' });
-    getIO(req).emit('shot:updated', result.rows[0]);
-    res.json({ success: true, data: result.rows[0] });
-  } catch (err) {
-    logger.error({ err }, 'Failed to update shot');
-    res.status(500).json({ success: false, error: 'Failed to update shot' });
-  }
-});
-
-router.delete('/shots/:id', async (req: Request, res: Response) => {
-  const { id } = req.params;
-  try {
-    await dbQuery('DELETE FROM shots WHERE id=$1', [id]);
-    getIO(req).emit('shot:deleted', { id });
-    res.json({ success: true });
-  } catch (err) {
-    logger.error({ err }, 'Failed to delete shot');
-    res.status(500).json({ success: false, error: 'Failed to delete shot' });
-  }
+  } catch (e) { next(e); }
 });
 
 // ── Flow Config ──
 
-router.get('/flow-config', async (req: Request, res: Response) => {
-  const sceneId = req.query.scene_id as string | undefined;
+router.get('/flow-config', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = sceneId
-      ? await dbQuery('SELECT nodes, edges, viewport FROM flow_configs WHERE scene_id=$1 LIMIT 1', [sceneId])
-      : await dbQuery('SELECT nodes, edges, viewport FROM flow_configs LIMIT 1');
-    const row = result.rows[0] || { nodes: [], edges: [], viewport: null };
-    res.json({ success: true, data: row });
-  } catch (err) {
-    logger.error({ err }, 'Failed to load flow config');
-    res.status(500).json({ success: false, error: 'Failed to load flow config' });
-  }
+    const { scene_id } = req.query;
+    if (!scene_id) return res.status(400).json({ success: false, error: 'scene_id required' });
+    const { rows } = await dbQuery('SELECT * FROM flow_configs WHERE scene_id = $1', [scene_id]);
+    res.json({ success: true, data: rows[0] ?? null });
+  } catch (e) { next(e); }
 });
 
-router.post('/flow-config', async (req: Request, res: Response) => {
-  const { nodes, edges, viewport } = req.body || {};
+router.post('/flow-config', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await dbQuery(
-      `INSERT INTO flow_configs (id, nodes, edges, viewport)
-       VALUES ('default', $1::jsonb, $2::jsonb, $3::jsonb)
-       ON CONFLICT (id) DO UPDATE
-         SET nodes = EXCLUDED.nodes, edges = EXCLUDED.edges, viewport = EXCLUDED.viewport, updated_at = NOW()`,
-      [JSON.stringify(nodes || []), JSON.stringify(edges || []), viewport ? JSON.stringify(viewport) : null]
+    const { scene_id, nodes, edges, viewport } = req.body;
+    const { rows } = await dbQuery(
+      `INSERT INTO flow_configs (scene_id, nodes, edges, viewport)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (scene_id) DO UPDATE SET nodes = $2, edges = $3, viewport = $4, updated_at = NOW()
+       RETURNING *`,
+      [scene_id, JSON.stringify(nodes), JSON.stringify(edges), JSON.stringify(viewport)]
     );
-    res.json({ success: true });
-  } catch (err) {
-    logger.error({ err }, 'Failed to save flow config');
-    res.status(500).json({ success: false, error: 'Failed to save flow config' });
-  }
+    req.app.get('io')?.emit('flow-config:updated', rows[0]);
+    res.json({ success: true, data: rows[0] });
+  } catch (e) { next(e); }
+});
+
+// ── Path Resolution Engine ──
+
+router.post('/resolve-paths', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scene_id } = req.body;
+    if (!scene_id) return res.status(400).json({ success: false, error: 'scene_id required' });
+
+    const [flowResult, configsResult, camerasResult, defaultsResult] = await Promise.all([
+      dbQuery('SELECT * FROM flow_configs WHERE scene_id = $1', [scene_id]),
+      dbQuery('SELECT * FROM node_configs'),
+      dbQuery('SELECT * FROM cameras WHERE scene_id = $1', [scene_id]),
+      dbQuery('SELECT * FROM studio_defaults'),
+    ]);
+
+    const flow = flowResult.rows[0];
+    if (!flow) return res.json({ success: true, data: { paths: [], count: 0 } });
+
+    const nodes: Record<string, any> = {};
+    for (const n of flow.nodes) nodes[n.id] = n;
+
+    const configs: Record<string, any> = {};
+    for (const c of configsResult.rows) configs[c.id] = c;
+
+    const cameras: Record<string, any> = {};
+    for (const c of camerasResult.rows) cameras[c.id] = c;
+
+    const defaults: Record<string, any> = {};
+    for (const d of defaultsResult.rows) defaults[d.category] = d.settings;
+
+    // Build adjacency list
+    const adj: Record<string, string[]> = {};
+    for (const edge of flow.edges) {
+      if (!adj[edge.source]) adj[edge.source] = [];
+      adj[edge.source].push(edge.target);
+    }
+
+    // Find all camera nodes
+    const cameraNodes = flow.nodes.filter((n: any) => n.type === 'camera');
+
+    // DFS from each camera to find all paths to output nodes
+    const paths: any[] = [];
+
+    function dfs(nodeId: string, path: string[]) {
+      const node = nodes[nodeId];
+      if (!node) return;
+      path.push(nodeId);
+
+      if (node.type === 'output') {
+        const segments: string[] = [];
+        let cameraName = '';
+        let revLabel = '';
+        const resolvedConfig = { ...defaults };
+
+        for (const nid of path) {
+          const n = nodes[nid];
+          if (n.type === 'camera' && n.camera_id) {
+            cameraName = cameras[n.camera_id]?.name ?? n.label;
+          }
+          if (n.type === 'group') {
+            segments.push(n.label);
+          }
+          if (n.type === 'stageRev') {
+            revLabel = n.label;
+          }
+          if (n.config_id && configs[n.config_id]) {
+            Object.assign(resolvedConfig, configs[n.config_id].delta);
+          }
+        }
+
+        const outputConfig = nodes[path[path.length - 1]];
+        const format = outputConfig?.config_id ? (configs[outputConfig.config_id]?.delta?.format ?? 'EXR') : 'EXR';
+        const filename = [...segments, cameraName, revLabel].filter(Boolean).join(' - ') + '.' + format.toLowerCase();
+
+        paths.push({
+          nodeIds: [...path],
+          cameraName,
+          filename,
+          resolvedConfig,
+          enabled: outputConfig?.enabled !== false,
+        });
+      }
+
+      const neighbors = adj[nodeId] ?? [];
+      for (const next of neighbors) {
+        dfs(next, [...path]);
+      }
+    }
+
+    for (const cam of cameraNodes) {
+      dfs(cam.id, []);
+    }
+
+    res.json({ success: true, data: { paths, count: paths.length } });
+  } catch (e) { next(e); }
 });
 
 export default router;
