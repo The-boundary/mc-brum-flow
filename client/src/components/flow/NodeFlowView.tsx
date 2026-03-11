@@ -11,6 +11,7 @@ import {
   type OnConnect,
   type Connection,
   type EdgeTypes,
+  type EdgeMouseHandler,
   BackgroundVariant,
   useReactFlow,
 } from '@xyflow/react';
@@ -149,6 +150,20 @@ export function NodeFlowView() {
     if (success) scheduleSave();
   }, [storeAddEdge, scheduleSave]);
 
+  const deleteEdgeById = useCallback((edgeId: string) => {
+    removeEdge(edgeId);
+    scheduleSave();
+  }, [removeEdge, scheduleSave]);
+
+  const onEdgeClick: EdgeMouseHandler = useCallback((event, edge) => {
+    if (!(event.shiftKey || event.ctrlKey || event.metaKey)) return;
+    deleteEdgeById(edge.id);
+  }, [deleteEdgeById]);
+
+  const onEdgeDoubleClick: EdgeMouseHandler = useCallback((_event, edge) => {
+    deleteEdgeById(edge.id);
+  }, [deleteEdgeById]);
+
   // Auto-suggest: when user drops a connection on empty canvas
   const onConnectEnd = useCallback((event: MouseEvent | TouchEvent) => {
     const target = event.target as HTMLElement;
@@ -257,6 +272,8 @@ export function NodeFlowView() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onConnectEnd={onConnectEnd}
+        onEdgeClick={onEdgeClick}
+        onEdgeDoubleClick={onEdgeDoubleClick}
         onPaneClick={onPaneClick}
         onPaneContextMenu={onPaneContextMenu}
         onMoveEnd={(_event, nextViewport) => updateViewport(nextViewport)}
@@ -323,6 +340,10 @@ export function NodeFlowView() {
           })}
         </div>
       )}
+
+      <div className="pointer-events-none absolute bottom-3 left-3 rounded bg-surface-100/90 border border-border px-2 py-1 text-[10px] text-fg-dim">
+        Double-click an edge to delete it. `Shift`/`Ctrl`/`Cmd`-click also deletes.
+      </div>
     </div>
   );
 }
