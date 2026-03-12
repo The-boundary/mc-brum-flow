@@ -356,23 +356,11 @@ export function NodeFlowView() {
     }, 2000);
   }, [saveGraph]);
 
-  const fitSelectionOrGraph = useCallback(() => {
-    const selectedNode = selectedNodeId
-      ? visibleFlowNodes.find((node) => node.id === selectedNodeId)
-      : null;
-
-    if (selectedNode) {
-      void reactFlowInstance.setCenter(selectedNode.position.x + 90, selectedNode.position.y + 35, {
-        duration: 220,
-        zoom: 1.15,
-      });
-      return;
-    }
-
+  const fitGraphToView = useCallback(() => {
     if (visibleFlowNodes.length > 0) {
       void reactFlowInstance.fitView({ duration: 220, padding: 0.18 });
     }
-  }, [reactFlowInstance, selectedNodeId, visibleFlowNodes]);
+  }, [reactFlowInstance, visibleFlowNodes]);
 
   // Build a set of upstream (parent) node IDs for a given node by walking edges backwards
   const getUpstreamNodeIds = useCallback(
@@ -636,13 +624,12 @@ export function NodeFlowView() {
         if (visibleFlowNodes.length === 0) return;
         const nextPositions = getAutoLayoutPositions(visibleFlowNodes, visibleStoreEdges);
         applyNodeLayout(nextPositions);
-        void reactFlowInstance.fitView({ duration: 280, padding: 0.15 });
         return;
       }
 
       if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === 'z') {
         event.preventDefault();
-        fitSelectionOrGraph();
+        fitGraphToView();
         return;
       }
 
@@ -662,8 +649,7 @@ export function NodeFlowView() {
     return () => window.removeEventListener('keydown', handler);
   }, [
     applyNodeLayout,
-    fitSelectionOrGraph,
-    reactFlowInstance,
+    fitGraphToView,
     removeNode,
     resolvePaths,
     saveGraph,
@@ -724,13 +710,12 @@ export function NodeFlowView() {
     const nextPositions = getAutoLayoutPositions(nodes, edges);
     if (Object.keys(nextPositions).length === 0) return;
     applyNodeLayout(nextPositions);
-    void reactFlowInstance.fitView({ duration: 280, padding: 0.15 });
-  }, [applyNodeLayout, autoLayoutNonce, reactFlowInstance]);
+  }, [applyNodeLayout, autoLayoutNonce]);
 
   useEffect(() => {
     if (!fitViewNonce) return;
-    fitSelectionOrGraph();
-  }, [fitSelectionOrGraph, fitViewNonce]);
+    fitGraphToView();
+  }, [fitGraphToView, fitViewNonce]);
 
   useEffect(() => {
     if (!zoomInNonce) return;
@@ -764,6 +749,7 @@ export function NodeFlowView() {
         connectionLineComponent={BranchConnectionLine}
         defaultViewport={initialViewport}
         fitView={false}
+        autoPanOnNodeFocus={false}
         minZoom={0.1}
         maxZoom={3}
         snapToGrid

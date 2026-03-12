@@ -384,7 +384,14 @@ export default function BrumFlowPage() {
                 className="!static !bg-surface-100 !border-0 !rounded-none !m-0 !p-0 !shadow-none"
                 style={{ width: '100%', height: '100%' }}
                 nodeColor={(node) => getMiniMapNodeColor(node.type)}
-                maskColor="rgba(0,0,0,0.4)"
+                nodeStrokeColor="rgba(15, 23, 42, 0.9)"
+                nodeStrokeWidth={2}
+                maskColor="rgba(2, 6, 23, 0.5)"
+                maskStrokeColor="rgba(125, 211, 252, 0.95)"
+                maskStrokeWidth={2}
+                pannable={false}
+                zoomable={false}
+                offsetScale={18}
               />
             </div>
           )}
