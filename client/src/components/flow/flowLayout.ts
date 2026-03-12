@@ -190,6 +190,35 @@ export function getSuggestedNextNodeTypes(
   return nextStageType ? [nextStageType] : [];
 }
 
+export function getSuggestedExistingTargetNodes(
+  flowNodes: FlowNode[],
+  flowEdges: FlowEdge[],
+  sourceNodeId: string,
+  validTypes: NodeType[]
+): FlowNode[] {
+  const allowedTypes = new Set(validTypes);
+  const existingTargets = new Set(
+    flowEdges
+      .filter((edge) => edge.source === sourceNodeId)
+      .map((edge) => edge.target)
+  );
+
+  return flowNodes
+    .filter((node) => node.id !== sourceNodeId)
+    .filter((node) => allowedTypes.has(node.type))
+    .filter((node) => !existingTargets.has(node.id))
+    .sort((left, right) => {
+      const leftStage = pipelineIndex(left.type);
+      const rightStage = pipelineIndex(right.type);
+      if (leftStage !== rightStage) return leftStage - rightStage;
+      if (left.type !== right.type) return left.type.localeCompare(right.type);
+      if (left.label !== right.label) return left.label.localeCompare(right.label);
+      if (left.position.y !== right.position.y) return left.position.y - right.position.y;
+      if (left.position.x !== right.position.x) return left.position.x - right.position.x;
+      return left.id.localeCompare(right.id);
+    });
+}
+
 export function getAutoLayoutPositions(flowNodes: FlowNode[], flowEdges: FlowEdge[]) {
   const positions: Record<string, { x: number; y: number }> = {};
   const nodesById = new Map(flowNodes.map((node) => [node.id, node]));

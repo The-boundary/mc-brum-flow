@@ -29,7 +29,12 @@ import { useUiStore } from '@/stores/uiStore';
 import { nodeTypes } from './nodes';
 import { ColoredEdge } from './ColoredEdge';
 import { getFlowSemantics } from './graphSemantics';
-import { getAutoLayoutPositions, getFlowHandleLayout, getSuggestedNextNodeTypes } from './flowLayout';
+import {
+  getAutoLayoutPositions,
+  getFlowHandleLayout,
+  getSuggestedExistingTargetNodes,
+  getSuggestedNextNodeTypes,
+} from './flowLayout';
 import type { NodeType } from '@shared/types';
 
 const edgeTypes: EdgeTypes = {
@@ -69,6 +74,10 @@ const NODE_TYPE_META: Record<NodeType, { label: string; icon: typeof Camera }> =
   output:      { label: 'Output',        icon: FileOutput },
 };
 
+function formatNodeTypeLabel(type: NodeType) {
+  return NODE_TYPE_META[type]?.label ?? type;
+}
+
 export function NodeFlowView() {
   const autoLayoutNonce = useUiStore((state) => state.autoLayoutNonce);
   const fitViewNonce = useUiStore((state) => state.fitViewNonce);
@@ -92,6 +101,18 @@ export function NodeFlowView() {
     [flowNodes, storeEdges]
   );
   const hasCameraSelection = semantics.selectedCameraNodeId !== null;
+  const existingAutoSuggestTargets = useMemo(() => {
+    if (!autoSuggest) {
+      return [];
+    }
+
+    return getSuggestedExistingTargetNodes(
+      flowNodes,
+      storeEdges,
+      autoSuggest.sourceNodeId,
+      autoSuggest.validTypes
+    );
+  }, [autoSuggest, flowNodes, storeEdges]);
 
   // Convert store FlowNodes to ReactFlow Nodes
   const rfNodes: Node[] = useMemo(() =>
@@ -208,7 +229,7 @@ export function NodeFlowView() {
 
     const target = event.target as Element | null;
     const droppedOnInteractiveElement = Boolean(
-      target?.closest('.react-flow__node, .react-flow__handle, .react-flow__controls, .react-flow__minimap')
+      target?.closest('.react-flow__node, .react-flow__handle, .react-flow__controls, .react-flow__minimap, .react-flow__edge, .react-flow__connection')
     );
 
     if (droppedOnInteractiveElement) return;
@@ -287,6 +308,15 @@ export function NodeFlowView() {
     setContextMenu(null);
     setAutoSuggest(null);
   }, [addNode, storeAddEdge, scheduleSave]);
+
+  const handleConnectToExistingNode = useCallback((sourceId: string, targetId: string) => {
+    const success = storeAddEdge(sourceId, targetId);
+    if (success) {
+      scheduleSave();
+      selectNode(targetId);
+    }
+    setAutoSuggest(null);
+  }, [scheduleSave, selectNode, storeAddEdge]);
 
   useEffect(() => {
     if (!autoLayoutNonce || flowNodes.length === 0) {
@@ -385,6 +415,29 @@ export function NodeFlowView() {
               </button>
             );
           })}
+
+          {existingAutoSuggestTargets.length > 0 && (
+            <>
+              <div className="mx-3 my-1 h-px bg-border" />
+              <div className="px-3 py-1 text-[10px] text-fg-dim uppercase tracking-wider">Connect Existing</div>
+              {existingAutoSuggestTargets.map((node) => {
+                const meta = NODE_TYPE_META[node.type];
+                return (
+                  <button
+                    key={node.id}
+                    onClick={() => handleConnectToExistingNode(autoSuggest.sourceNodeId, node.id)}
+                    className="flex items-center gap-2.5 w-full px-3 py-1.5 text-xs text-foreground hover:bg-surface-300 transition-colors text-left"
+                  >
+                    <meta.icon className="w-3.5 h-3.5 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <div className="truncate">{node.label}</div>
+                      <div className="text-[10px] text-fg-dim">{formatNodeTypeLabel(node.type)}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </>
+          )}
         </div>
       )}
 
