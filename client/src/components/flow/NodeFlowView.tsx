@@ -344,8 +344,10 @@ export function NodeFlowView() {
     if (lastAppliedViewportSceneRef.current === activeSceneId) return;
 
     lastAppliedViewportSceneRef.current = activeSceneId;
-    void reactFlowInstance.setViewport(viewport, { duration: 0 });
-  }, [activeSceneId, reactFlowInstance, viewport]);
+    // Read viewport directly from store to avoid re-running on every viewport change
+    const currentViewport = useFlowStore.getState().viewport;
+    void reactFlowInstance.setViewport(currentViewport, { duration: 0 });
+  }, [activeSceneId, reactFlowInstance]);
 
   const scheduleSave = useCallback(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
