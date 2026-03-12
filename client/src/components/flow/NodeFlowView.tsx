@@ -236,6 +236,10 @@ export function NodeFlowView() {
   const pendingConnectionRef = useRef<PendingConnectionState | null>(null);
   const autoSuggestJustSetRef = useRef(false);
   const lastAppliedViewportSceneRef = useRef<string | null>(null);
+  const lastAutoLayoutNonceRef = useRef(autoLayoutNonce);
+  const lastFitViewNonceRef = useRef(fitViewNonce);
+  const lastZoomInNonceRef = useRef(zoomInNonce);
+  const lastZoomOutNonceRef = useRef(zoomOutNonce);
   const reactFlowInstance = useReactFlow();
   const initialViewport = useMemo(() => viewport, [activeSceneId]);
 
@@ -704,7 +708,8 @@ export function NodeFlowView() {
   );
 
   useEffect(() => {
-    if (!autoLayoutNonce) return;
+    if (autoLayoutNonce === lastAutoLayoutNonceRef.current) return;
+    lastAutoLayoutNonceRef.current = autoLayoutNonce;
     const { flowNodes: nodes, flowEdges: edges } = useFlowStore.getState();
     if (nodes.length === 0) return;
     const nextPositions = getAutoLayoutPositions(nodes, edges);
@@ -713,17 +718,20 @@ export function NodeFlowView() {
   }, [applyNodeLayout, autoLayoutNonce]);
 
   useEffect(() => {
-    if (!fitViewNonce) return;
+    if (fitViewNonce === lastFitViewNonceRef.current) return;
+    lastFitViewNonceRef.current = fitViewNonce;
     fitGraphToView();
   }, [fitGraphToView, fitViewNonce]);
 
   useEffect(() => {
-    if (!zoomInNonce) return;
+    if (zoomInNonce === lastZoomInNonceRef.current) return;
+    lastZoomInNonceRef.current = zoomInNonce;
     void reactFlowInstance.zoomIn({ duration: 200 });
   }, [zoomInNonce, reactFlowInstance]);
 
   useEffect(() => {
-    if (!zoomOutNonce) return;
+    if (zoomOutNonce === lastZoomOutNonceRef.current) return;
+    lastZoomOutNonceRef.current = zoomOutNonce;
     void reactFlowInstance.zoomOut({ duration: 200 });
   }, [zoomOutNonce, reactFlowInstance]);
 
@@ -750,6 +758,8 @@ export function NodeFlowView() {
         defaultViewport={initialViewport}
         fitView={false}
         autoPanOnNodeFocus={false}
+        autoPanOnConnect={false}
+        autoPanOnNodeDrag={false}
         minZoom={0.1}
         maxZoom={3}
         snapToGrid

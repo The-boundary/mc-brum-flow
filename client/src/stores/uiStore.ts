@@ -68,6 +68,35 @@ export const useUiStore = create<UiState>()(
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       setSidebarMobileOpen: (open) => set({ sidebarMobileOpen: open }),
     }),
-    { name: 'brum-flow-ui' }
+    {
+      name: 'brum-flow-ui',
+      version: 2,
+      partialize: (state) => ({
+        viewMode: state.viewMode,
+        detailPanelOpen: state.detailPanelOpen,
+        detailPanelWidth: state.detailPanelWidth,
+        outputPanelOpen: state.outputPanelOpen,
+        presetLibraryOpen: state.presetLibraryOpen,
+        linkSameType: state.linkSameType,
+        moveParents: state.moveParents,
+        sidebarCollapsed: state.sidebarCollapsed,
+        sidebarMobileOpen: state.sidebarMobileOpen,
+      }),
+      migrate: (persistedState) => {
+        const state = (persistedState as Partial<UiState> | undefined) ?? {};
+
+        return {
+          viewMode: state.viewMode ?? 'flow',
+          detailPanelOpen: state.detailPanelOpen ?? true,
+          detailPanelWidth: state.detailPanelWidth ?? 380,
+          outputPanelOpen: state.outputPanelOpen ?? false,
+          presetLibraryOpen: state.presetLibraryOpen ?? false,
+          linkSameType: state.linkSameType ?? false,
+          moveParents: state.moveParents ?? false,
+          sidebarCollapsed: state.sidebarCollapsed ?? false,
+          sidebarMobileOpen: state.sidebarMobileOpen ?? false,
+        };
+      },
+    }
   )
 );
