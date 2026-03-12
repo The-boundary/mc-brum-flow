@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, ChevronDown, ChevronRight, ArrowUpRight, ArrowDownLeft, Server, Trash2 } from 'lucide-react';
+import { X, ChevronDown, ChevronRight, ArrowUpRight, ArrowDownLeft, Server, Trash2, ClipboardCopy } from 'lucide-react';
 import { useFlowStore } from '@/stores/flowStore';
 import type { MaxDebugLogEntry } from '@/stores/flowStore';
 
@@ -62,6 +62,21 @@ function LogEntry({ entry }: { entry: MaxDebugLogEntry }) {
 export function MaxDebugPanel({ onClose }: { onClose: () => void }) {
   const maxDebugLog = useFlowStore((s) => s.maxDebugLog);
   const clearMaxDebugLog = useFlowStore((s) => s.clearMaxDebugLog);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyAll = () => {
+    const text = maxDebugLog.map((entry) => {
+      const time = new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const dir = entry.direction === 'outgoing' ? '>>>' : entry.direction === 'incoming' ? '<<<' : '---';
+      const dur = entry.durationMs != null ? ` (${entry.durationMs}ms)` : '';
+      const detail = entry.detail ? `\n    ${entry.detail.replace(/\n/g, '\n    ')}` : '';
+      return `[${time}] ${dir} [${entry.level}] ${entry.summary}${dur}${detail}`;
+    }).join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
 
   return (
     <div className="h-full flex flex-col bg-surface-100">
@@ -72,6 +87,16 @@ export function MaxDebugPanel({ onClose }: { onClose: () => void }) {
           <span className="text-[10px] text-fg-dim">{maxDebugLog.length} entries</span>
         </div>
         <div className="flex items-center gap-1">
+          <button
+            onClick={handleCopyAll}
+            className="p-1 rounded text-fg-dim hover:text-foreground hover:bg-surface-300 transition"
+            title="Copy all"
+          >
+            {copied
+              ? <span className="text-[10px] text-emerald-400 px-0.5">Copied</span>
+              : <ClipboardCopy className="w-3 h-3" />
+            }
+          </button>
           <button
             onClick={clearMaxDebugLog}
             className="p-1 rounded text-fg-dim hover:text-foreground hover:bg-surface-300 transition"

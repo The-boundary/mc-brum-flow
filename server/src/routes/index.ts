@@ -13,6 +13,7 @@ import {
   queueScenesUsingNodeConfig,
   syncSceneToMaxNow,
 } from '../services/max-sync.js';
+import { getConnectedInstances, sendCommand, invalidateEventHandlerCache } from '../services/max-tcp-server.js';
 import { logger } from '../utils/logger.js';
 
 const router = Router();
@@ -25,12 +26,27 @@ function triggerBackgroundSync(job: Promise<unknown>, context: Record<string, un
 
 function buildImportCamerasScript() {
   return `(
+fn bfEscJson s = (
+  local out = ""
+  for i = 1 to s.count do (
+    local c = s[i]
+    case c of (
+      "\\\\": out += "\\\\\\\\"
+      "\\"": out += "\\\\\\""
+      "\\n": out += "\\\\n"
+      "\\r": out += "\\\\r"
+      "\\t": out += "\\\\t"
+      default: out += c
+    )
+  )
+  out
+)
 local cameraJson = #()
 for cam in cameras do (
   local camName = try (cam.name as string) catch ""
   local camClass = try ((classOf cam) as string) catch ""
-  local camHandle = try (getHandleByAnim cam) catch 0
-  append cameraJson ("{\\\"name\\\":\\\"" + MCP_Server.escapeJsonString camName + "\\\",\\\"max_handle\\\":" + (camHandle as string) + ",\\\"max_class\\\":\\\"" + MCP_Server.escapeJsonString camClass + "\\\"}")
+  local camHandle = try ((getHandleByAnim cam) as integer) catch 0
+  append cameraJson ("{\\\"name\\\":\\\"" + bfEscJson camName + "\\\",\\\"max_handle\\\":" + (camHandle as string) + ",\\\"max_class\\\":\\\"" + bfEscJson camClass + "\\\"}")
 )
 local joined = ""
 for i = 1 to cameraJson.count do (
@@ -286,7 +302,13 @@ router.post('/cameras/import-from-max', async (req: Request, res: Response, next
       : config.maxHost;
 
     const response = await executeMaxMcpScript(buildImportCamerasScript(), 30_000, { host, port: config.maxPort });
-    const parsed = JSON.parse(response.result || '[]') as Array<{ name: string; max_handle: number; max_class?: string }>;
+    let parsed: Array<{ name: string; max_handle: number; max_class?: string }>;
+    try {
+      parsed = JSON.parse(response.result || '[]');
+    } catch (parseErr) {
+      logger.error({ raw: response.result?.slice(0, 500) }, 'Failed to parse camera JSON from 3ds Max');
+      return res.status(502).json({ success: false, error: `Invalid JSON from 3ds Max: ${(parseErr as Error).message}` });
+    }
 
     const imported: unknown[] = [];
     for (const camera of parsed) {
@@ -442,6 +464,50 @@ router.post('/submit-render', async (req: Request, res: Response, next: NextFunc
     }
 
     res.json({ success: true, data: { submitted: jobIds.length, jobs: jobIds } });
+  } catch (e) { next(e); }
+});
+
+// ── Max TCP Instances ──
+
+router.get('/max-instances', (_req: Request, res: Response) => {
+  res.json({ success: true, data: getConnectedInstances() });
+});
+
+router.post('/max-instances/:instanceId/eval', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { instanceId } = req.params;
+    const { script } = req.body;
+    if (!script || typeof script !== 'string') {
+      return res.status(400).json({ success: false, error: 'script required' });
+    }
+    const result = await sendCommand(instanceId, script, 30_000);
+    res.json({ success: true, data: { result } });
+  } catch (e) { next(e); }
+});
+
+// ── Event Handlers ──
+
+router.get('/event-handlers', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { rows } = await dbQuery('SELECT * FROM event_handlers ORDER BY event_type');
+    res.json({ success: true, data: rows });
+  } catch (e) { next(e); }
+});
+
+router.put('/event-handlers/:eventType', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { eventType } = req.params;
+    const { script, enabled } = req.body;
+    const { rows } = await dbQuery(
+      `UPDATE event_handlers SET script = COALESCE($2, script), enabled = COALESCE($3, enabled), updated_at = NOW()
+       WHERE event_type = $1 RETURNING *`,
+      [eventType, script ?? null, enabled ?? null]
+    );
+    if (!rows[0]) {
+      return res.status(404).json({ success: false, error: 'Event type not found' });
+    }
+    invalidateEventHandlerCache();
+    res.json({ success: true, data: rows[0] });
   } catch (e) { next(e); }
 });
 

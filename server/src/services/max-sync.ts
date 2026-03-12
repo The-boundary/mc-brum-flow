@@ -97,12 +97,27 @@ const sceneSyncLocks = new Map<string, Promise<void>>();
 
 function buildImportCamerasScript() {
   return `(
+fn bfEscJson s = (
+  local out = ""
+  for i = 1 to s.count do (
+    local c = s[i]
+    case c of (
+      "\\\\": out += "\\\\\\\\"
+      "\\"": out += "\\\\\\""
+      "\\n": out += "\\\\n"
+      "\\r": out += "\\\\r"
+      "\\t": out += "\\\\t"
+      default: out += c
+    )
+  )
+  out
+)
 local cameraJson = #()
 for cam in cameras do (
   local camName = try (cam.name as string) catch ""
   local camClass = try ((classOf cam) as string) catch ""
-  local camHandle = try (getHandleByAnim cam) catch 0
-  append cameraJson ("{\\\"name\\\":\\\"" + MCP_Server.escapeJsonString camName + "\\\",\\\"max_handle\\\":" + (camHandle as string) + ",\\\"max_class\\\":\\\"" + MCP_Server.escapeJsonString camClass + "\\\"}")
+  local camHandle = try ((getHandleByAnim cam) as integer) catch 0
+  append cameraJson ("{\\\"name\\\":\\\"" + bfEscJson camName + "\\\",\\\"max_handle\\\":" + (camHandle as string) + ",\\\"max_class\\\":\\\"" + bfEscJson camClass + "\\\"}")
 )
 local joined = ""
 for i = 1 to cameraJson.count do (
@@ -120,7 +135,13 @@ function getMissingCameraName(message: string): string | null {
 
 async function getSceneCamerasFromMax(host?: string) {
   const response = await executeMaxMcpScript(buildImportCamerasScript(), 30_000, { host });
-  const parsed = JSON.parse(response.result || '[]') as MaxSceneCameraInfo[];
+  let parsed: MaxSceneCameraInfo[];
+  try {
+    parsed = JSON.parse(response.result || '[]');
+  } catch {
+    logger.error({ raw: response.result?.slice(0, 500) }, 'Failed to parse camera JSON from 3ds Max');
+    return [];
+  }
   return Array.isArray(parsed) ? parsed.filter((camera) => typeof camera?.name === 'string') : [];
 }
 

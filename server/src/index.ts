@@ -12,6 +12,7 @@ import routes from './routes/index.js';
 import authRouter from './routes/auth.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { registerSocketServer } from './services/socket-events.js';
+import { startMaxTcpServer } from './services/max-tcp-server.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -76,4 +77,5 @@ io.on('connection', (socket) => {
 server.listen(config.port, () => {
   logger.info(`Brum Flow server running on http://localhost:${config.port}`);
   logger.info(`Environment: ${config.nodeEnv}`);
+  startMaxTcpServer();
 });

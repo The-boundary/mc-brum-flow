@@ -35,6 +35,17 @@ export interface CameraMatchPrompt {
   availableCameras: Camera[];
 }
 
+export interface MaxTcpInstance {
+  id: string;
+  hostname: string;
+  username: string;
+  pid: number;
+  maxVersion?: string;
+  currentFile: string;
+  connectedAt: string;
+  lastHeartbeat: string;
+}
+
 export interface MaxDebugLogEntry {
   id: string;
   timestamp: string;
@@ -68,6 +79,7 @@ interface FlowState {
 
   // Max connection
   maxHealth: MaxHealthResult | null;
+  maxTcpInstances: MaxTcpInstance[];
   cameraMatchPrompt: CameraMatchPrompt | null;
 
   // Sync activity log
@@ -254,6 +266,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   pathCount: 0,
   maxSyncState: null,
   maxHealth: null,
+  maxTcpInstances: [],
   cameraMatchPrompt: null,
   syncLog: [],
   maxDebugLog: [],
@@ -667,6 +680,10 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     socket.removeAllListeners('node-config:deleted');
     socket.removeAllListeners('flow-config:updated');
     socket.removeAllListeners('max-sync:updated');
+    socket.removeAllListeners('max-tcp:connected');
+    socket.removeAllListeners('max-tcp:disconnected');
+    socket.removeAllListeners('max-tcp:instances');
+    socket.removeAllListeners('max-tcp:file-opened');
 
     socket.on('scene:created', (row: Scene) => {
       set((s) => ({ scenes: [...s.scenes.filter((sc) => sc.id !== row.id), row] }));
@@ -748,6 +765,34 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
           });
         }
       }
+    });
+
+    // Max TCP instance events
+    socket.on('max-tcp:instances', (list: MaxTcpInstance[]) => {
+      set({ maxTcpInstances: list });
+    });
+
+    socket.on('max-tcp:connected', (instance: MaxTcpInstance) => {
+      set((s) => ({
+        maxTcpInstances: [...s.maxTcpInstances.filter((i) => i.id !== instance.id), instance],
+      }));
+      get().showToast(`3ds Max connected: ${instance.hostname}`, 'success');
+    });
+
+    socket.on('max-tcp:disconnected', ({ instanceId }: { instanceId: string }) => {
+      set((s) => ({
+        maxTcpInstances: s.maxTcpInstances.filter((i) => i.id !== instanceId),
+      }));
+    });
+
+    socket.on('max-tcp:file-opened', ({ instanceId, filename }: { instanceId: string; filename: string }) => {
+      set((s) => ({
+        maxTcpInstances: s.maxTcpInstances.map((i) =>
+          i.id === instanceId ? { ...i, currentFile: filename } : i
+        ),
+      }));
+      const shortName = filename.split(/[/\\]/).pop() || filename;
+      get().showToast(`3ds Max opened: ${shortName}`, 'info');
     });
   },
 
