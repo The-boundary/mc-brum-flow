@@ -230,7 +230,8 @@ export function NodeFlowView() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [autoSuggest, setAutoSuggest] = useState<AutoSuggestState | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const [linkCameras, setLinkCameras] = useState(false);
+  const [linkSameType, setLinkSameType] = useState(false);
+  const [moveChildren, setMoveChildren] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingConnectionRef = useRef<PendingConnectionState | null>(null);
   const autoSuggestJustSetRef = useRef(false);
@@ -364,50 +365,105 @@ export function NodeFlowView() {
     }
   }, [reactFlowInstance, selectedNodeId, visibleFlowNodes]);
 
+  // Build a set of upstream (parent) node IDs for a given node by walking edges backwards
+  const getUpstreamNodeIds = useCallback(
+    (nodeId: string): Set<string> => {
+      const upstream = new Set<string>();
+      const queue = [nodeId];
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        for (const edge of visibleStoreEdges) {
+          if (edge.target === current && !upstream.has(edge.source)) {
+            upstream.add(edge.source);
+            queue.push(edge.source);
+          }
+        }
+      }
+      return upstream;
+    },
+    [visibleStoreEdges]
+  );
+
   const handleNodesChange = useCallback(
     (changes: NodeChange<Node>[]) => {
       let finalChanges = changes;
+      const extra: NodeChange<Node>[] = [];
 
-      if (linkCameras) {
-        const extra: NodeChange<Node>[] = [];
-        for (const change of changes) {
-          if (change.type === 'position' && change.dragging && change.position) {
-            const draggedNode = nodes.find((n) => n.id === change.id);
-            if (draggedNode?.type === 'camera') {
-              const dx = change.position.x - draggedNode.position.x;
-              const dy = change.position.y - draggedNode.position.y;
-              if (dx !== 0 || dy !== 0) {
-                for (const node of nodes) {
-                  if (node.type === 'camera' && node.id !== change.id) {
-                    extra.push({
-                      type: 'position',
-                      id: node.id,
-                      position: { x: node.position.x + dx, y: node.position.y + dy },
-                      dragging: true,
-                    });
-                  }
-                }
-              }
+      for (const change of changes) {
+        if (change.type !== 'position' || !change.dragging || !change.position) continue;
+
+        const draggedNode = nodes.find((n) => n.id === change.id);
+        if (!draggedNode) continue;
+
+        const dx = change.position.x - draggedNode.position.x;
+        const dy = change.position.y - draggedNode.position.y;
+        if (dx === 0 && dy === 0) continue;
+
+        const alreadyMoved = new Set<string>([change.id]);
+
+        // Link same type: move all nodes of the same type
+        if (linkSameType) {
+          for (const node of nodes) {
+            if (node.type === draggedNode.type && !alreadyMoved.has(node.id)) {
+              alreadyMoved.add(node.id);
+              extra.push({
+                type: 'position',
+                id: node.id,
+                position: { x: node.position.x + dx, y: node.position.y + dy },
+                dragging: true,
+              });
             }
           }
         }
-        if (extra.length > 0) {
-          finalChanges = [...changes, ...extra];
+
+        // Move children: move all upstream/parent nodes
+        if (moveChildren) {
+          const upstreamIds = getUpstreamNodeIds(change.id);
+          for (const node of nodes) {
+            if (upstreamIds.has(node.id) && !alreadyMoved.has(node.id)) {
+              alreadyMoved.add(node.id);
+              extra.push({
+                type: 'position',
+                id: node.id,
+                position: { x: node.position.x + dx, y: node.position.y + dy },
+                dragging: true,
+              });
+            }
+          }
         }
+      }
+
+      if (extra.length > 0) {
+        finalChanges = [...changes, ...extra];
       }
 
       onNodesChange(finalChanges);
 
+      // Persist positions on drag end
       for (const change of changes) {
         if (change.type === 'position' && change.position && !change.dragging) {
           updateNodePosition(change.id, change.position);
 
-          if (linkCameras) {
+          // Also persist co-moved nodes
+          if (linkSameType || moveChildren) {
             const draggedNode = nodes.find((n) => n.id === change.id);
-            if (draggedNode?.type === 'camera') {
-              for (const node of nodes) {
-                if (node.type === 'camera' && node.id !== change.id) {
-                  updateNodePosition(node.id, node.position);
+            if (draggedNode) {
+              const saved = new Set<string>([change.id]);
+              if (linkSameType) {
+                for (const node of nodes) {
+                  if (node.type === draggedNode.type && !saved.has(node.id)) {
+                    saved.add(node.id);
+                    updateNodePosition(node.id, node.position);
+                  }
+                }
+              }
+              if (moveChildren) {
+                const upstreamIds = getUpstreamNodeIds(change.id);
+                for (const node of nodes) {
+                  if (upstreamIds.has(node.id) && !saved.has(node.id)) {
+                    saved.add(node.id);
+                    updateNodePosition(node.id, node.position);
+                  }
                 }
               }
             }
@@ -417,7 +473,7 @@ export function NodeFlowView() {
         }
       }
     },
-    [onNodesChange, scheduleSave, updateNodePosition, linkCameras, nodes]
+    [onNodesChange, scheduleSave, updateNodePosition, linkSameType, moveChildren, nodes, getUpstreamNodeIds]
   );
 
   const onConnect: OnConnect = useCallback(
@@ -671,20 +727,33 @@ export function NodeFlowView() {
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(190 12% 20%)" />
         <Controls className="!bg-surface-200 !border-border !rounded-lg [&>button]:!bg-surface-300 [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-surface-400" />
 
-        {/* Link cameras toggle */}
-        <div className="absolute bottom-3 left-14 z-10">
+        {/* Drag mode toggles */}
+        <div className="absolute bottom-3 left-14 z-10 flex gap-1.5">
           <button
             type="button"
-            onClick={() => setLinkCameras((v) => !v)}
-            title={linkCameras ? 'Cameras linked — drag one to move all' : 'Cameras independent — click to link'}
+            onClick={() => setLinkSameType((v) => !v)}
+            title={linkSameType ? 'Same-type linking ON — drag one to move all of same type' : 'Same-type linking OFF — nodes move independently'}
             className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium shadow-md backdrop-blur-sm transition-all ${
-              linkCameras
+              linkSameType
                 ? 'border-emerald-500/50 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
                 : 'border-border bg-surface-200/90 text-fg-muted hover:bg-surface-300 hover:text-foreground'
             }`}
           >
-            {linkCameras ? <Link2 className="h-3.5 w-3.5" /> : <Unlink2 className="h-3.5 w-3.5" />}
-            {linkCameras ? 'Cameras Linked' : 'Link Cameras'}
+            {linkSameType ? <Link2 className="h-3.5 w-3.5" /> : <Unlink2 className="h-3.5 w-3.5" />}
+            Link Type
+          </button>
+          <button
+            type="button"
+            onClick={() => setMoveChildren((v) => !v)}
+            title={moveChildren ? 'Move parents ON — drag a node to also move all upstream nodes' : 'Move parents OFF — only the dragged node moves'}
+            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium shadow-md backdrop-blur-sm transition-all ${
+              moveChildren
+                ? 'border-sky-500/50 bg-sky-500/20 text-sky-300 hover:bg-sky-500/30'
+                : 'border-border bg-surface-200/90 text-fg-muted hover:bg-surface-300 hover:text-foreground'
+            }`}
+          >
+            {moveChildren ? <Link2 className="h-3.5 w-3.5" /> : <Unlink2 className="h-3.5 w-3.5" />}
+            Move Parents
           </button>
         </div>
         <MiniMap
