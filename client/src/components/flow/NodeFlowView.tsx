@@ -242,27 +242,27 @@ export function NodeFlowView() {
     const clientY = 'clientY' in event ? event.clientY : event.touches?.[0]?.clientY ?? 0;
     const flowPos = reactFlowInstance.screenToFlowPosition({ x: clientX, y: clientY });
 
-    // Mark that auto-suggest was just opened — prevents the pane click
-    // that fires on the same mouseup from immediately clearing it
+    // Defer showing the dropdown until after the click event from mouseup
+    // has fully bubbled — otherwise onPaneClick and the window click
+    // listener immediately clear it in the same event loop tick
     autoSuggestJustSetRef.current = true;
-    requestAnimationFrame(() => { autoSuggestJustSetRef.current = false; });
-
-    setAutoSuggest({
-      x: clientX + 8,
-      y: clientY + 8,
-      flowX: flowPos.x,
-      flowY: flowPos.y,
-      sourceNodeId: pendingConnection.sourceNodeId,
-      validTypes,
-    });
+    setTimeout(() => {
+      autoSuggestJustSetRef.current = false;
+      setAutoSuggest({
+        x: clientX + 8,
+        y: clientY + 8,
+        flowX: flowPos.x,
+        flowY: flowPos.y,
+        sourceNodeId: pendingConnection.sourceNodeId,
+        validTypes,
+      });
+    }, 0);
   }, [flowNodes, reactFlowInstance, storeEdges]);
 
   // Click on background deselects
   const onPaneClick = useCallback(() => {
     selectNode(null);
     setContextMenu(null);
-    // Don't clear auto-suggest if it was just opened by onConnectEnd
-    // (the mouseup that ends a connection drag also fires a pane click)
     if (!autoSuggestJustSetRef.current) {
       setAutoSuggest(null);
     }
