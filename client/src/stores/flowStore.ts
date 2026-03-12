@@ -577,10 +577,11 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     socket.on('flow-config:updated', (row: any) => {
       const { activeSceneId } = get();
       if (row.scene_id === activeSceneId) {
+        const currentViewport = get().viewport;
         set({
           flowNodes: row.nodes || [],
           flowEdges: normalizeFlowEdges(row.nodes || [], row.edges || []),
-          viewport: row.viewport || { x: 0, y: 0, zoom: 1 },
+          viewport: currentViewport,
         });
         void get().resolvePaths();
       }

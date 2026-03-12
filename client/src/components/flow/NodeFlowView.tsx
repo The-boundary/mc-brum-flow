@@ -208,6 +208,7 @@ export function NodeFlowView() {
   const autoLayoutNonce = useUiStore((state) => state.autoLayoutNonce);
   const fitViewNonce = useUiStore((state) => state.fitViewNonce);
   const {
+    activeSceneId,
     flowNodes,
     flowEdges: storeEdges,
     selectedNodeId,
@@ -230,7 +231,7 @@ export function NodeFlowView() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingConnectionRef = useRef<PendingConnectionState | null>(null);
   const autoSuggestJustSetRef = useRef(false);
-  const lastAppliedViewportRef = useRef<string>('');
+  const lastAppliedViewportSceneRef = useRef<string | null>(null);
   const reactFlowInstance = useReactFlow();
 
   const hiddenPreviousNodeIds = useMemo(
@@ -327,23 +328,12 @@ export function NodeFlowView() {
   }, [rfEdges, setEdges]);
 
   useEffect(() => {
-    const viewportKey = `${viewport.x}:${viewport.y}:${viewport.zoom}`;
-    if (lastAppliedViewportRef.current === viewportKey) return;
+    if (!activeSceneId) return;
+    if (lastAppliedViewportSceneRef.current === activeSceneId) return;
 
-    const currentViewport = reactFlowInstance.getViewport();
-    const viewportChanged =
-      Math.abs(currentViewport.x - viewport.x) > 0.5 ||
-      Math.abs(currentViewport.y - viewport.y) > 0.5 ||
-      Math.abs(currentViewport.zoom - viewport.zoom) > 0.01;
-
-    if (!viewportChanged) {
-      lastAppliedViewportRef.current = viewportKey;
-      return;
-    }
-
-    lastAppliedViewportRef.current = viewportKey;
+    lastAppliedViewportSceneRef.current = activeSceneId;
     void reactFlowInstance.setViewport(viewport, { duration: 0 });
-  }, [reactFlowInstance, viewport, visibleFlowNodes.length]);
+  }, [activeSceneId, reactFlowInstance, viewport]);
 
   const scheduleSave = useCallback(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
