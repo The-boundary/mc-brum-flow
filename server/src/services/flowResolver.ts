@@ -105,6 +105,24 @@ function normalizeOutputResolution(resolvedConfig: Record<string, unknown>) {
   delete resolvedConfig.ratio;
 }
 
+function parseHandleIndex(handleId: unknown): number | null {
+  if (typeof handleId !== 'string') return null;
+  const match = handleId.match(/-(\d+)$/);
+  if (!match) return null;
+  return Number.parseInt(match[1], 10);
+}
+
+function getOutgoingForLane(outgoing: Map<string, any[]>, nodeId: string, lane: number | null) {
+  const edges = outgoing.get(nodeId) ?? [];
+  if (lane === null) return edges;
+
+  const matched = edges.filter((edge) => parseHandleIndex(edge.source_handle) === lane);
+  if (matched.length > 0) return matched;
+
+  const laneAgnostic = edges.filter((edge) => edge.source_handle == null);
+  return laneAgnostic.length > 0 ? laneAgnostic : edges;
+}
+
 export function resolveFlowPaths({
   flow,
   configs,
@@ -113,6 +131,7 @@ export function resolveFlowPaths({
 }: ResolveFlowPathsInput): ResolvedFlowPath[] {
   const nodes = new Map<string, any>();
   const outgoing = new Map<string, string[]>();
+  const outgoingEdges = new Map<string, any[]>();
 
   for (const node of flow.nodes ?? []) {
     nodes.set(node.id, node);
@@ -122,12 +141,16 @@ export function resolveFlowPaths({
     const targets = outgoing.get(edge.source) ?? [];
     targets.push(edge.target);
     outgoing.set(edge.source, targets);
+
+    const sourceEdges = outgoingEdges.get(edge.source) ?? [];
+    sourceEdges.push(edge);
+    outgoingEdges.set(edge.source, sourceEdges);
   }
 
   const cameraNodes = (flow.nodes ?? []).filter((node: any) => node.type === 'camera');
   const paths: ResolvedFlowPath[] = [];
 
-  const visit = (nodeId: string, trail: string[]) => {
+  const visit = (nodeId: string, trail: string[], lane: number | null) => {
     if (trail.includes(nodeId)) return;
 
     const node = nodes.get(nodeId);
@@ -139,13 +162,14 @@ export function resolveFlowPaths({
       paths.push(resolveSinglePath(nextTrail, nodes, configs, cameras, defaults));
     }
 
-    for (const targetId of outgoing.get(nodeId) ?? []) {
-      visit(targetId, nextTrail);
+    for (const edge of getOutgoingForLane(outgoingEdges, nodeId, lane)) {
+      const nextLane = parseHandleIndex(edge.target_handle) ?? parseHandleIndex(edge.source_handle) ?? lane;
+      visit(edge.target, nextTrail, nextLane);
     }
   };
 
   for (const cameraNode of cameraNodes) {
-    visit(cameraNode.id, []);
+    visit(cameraNode.id, [], null);
   }
 
   return paths;

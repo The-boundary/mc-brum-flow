@@ -49,6 +49,8 @@ export const upsertCamera = (data: any) =>
   request<any>('/cameras', { method: 'POST', body: JSON.stringify(data) });
 export const deleteCamera = (id: string) =>
   request<void>(`/cameras/${id}`, { method: 'DELETE' });
+export const importCamerasFromMax = (sceneId: string) =>
+  request<{ imported: number; cameras: any[] }>('/cameras/import-from-max', { method: 'POST', body: JSON.stringify({ scene_id: sceneId }) });
 
 // Flow Config
 export const fetchFlowConfig = (sceneId: string) =>

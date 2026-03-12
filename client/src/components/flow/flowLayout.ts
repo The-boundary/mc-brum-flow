@@ -64,6 +64,13 @@ function buildHandleIds(prefix: 'source' | 'target', count: number): string[] {
   return Array.from({ length: Math.max(1, count) }, (_value, index) => `${prefix}-${index}`);
 }
 
+function parseHandleIndex(handleId?: string): number | null {
+  if (!handleId) return null;
+  const match = handleId.match(/-(\d+)$/);
+  if (!match) return null;
+  return Number.parseInt(match[1], 10);
+}
+
 function compareEdgesByCounterpart(
   a: FlowEdge,
   b: FlowEdge,
@@ -95,20 +102,27 @@ export function getFlowHandleLayout(flowNodes: FlowNode[], flowEdges: FlowEdge[]
       compareEdgesByCounterpart(a, b, edgeMaps.nodesById, 'outgoing')
     );
 
-    const inputHandleIds = INPUT_NODE_TYPES.has(node.type) ? buildHandleIds('target', incoming.length) : [];
-    const outputHandleIds = OUTPUT_NODE_TYPES.has(node.type) ? buildHandleIds('source', outgoing.length) : [];
+    const channelCount = Math.max(incoming.length, outgoing.length, 1);
+    const inputHandleIds = INPUT_NODE_TYPES.has(node.type) ? buildHandleIds('target', channelCount) : [];
+    const outputHandleIds = OUTPUT_NODE_TYPES.has(node.type) ? buildHandleIds('source', channelCount) : [];
 
     nodeHandles.set(node.id, { inputHandleIds, outputHandleIds });
 
     incoming.forEach((edge, index) => {
       const assignment = edgeHandles.get(edge.id) ?? {};
-      assignment.targetHandle = inputHandleIds[index] ?? inputHandleIds[0];
+      const explicitIndex = parseHandleIndex(edge.target_handle);
+      assignment.targetHandle = explicitIndex !== null
+        ? inputHandleIds[explicitIndex] ?? inputHandleIds[index] ?? inputHandleIds[0]
+        : inputHandleIds[index] ?? inputHandleIds[0];
       edgeHandles.set(edge.id, assignment);
     });
 
     outgoing.forEach((edge, index) => {
       const assignment = edgeHandles.get(edge.id) ?? {};
-      assignment.sourceHandle = outputHandleIds[index] ?? outputHandleIds[0];
+      const explicitIndex = parseHandleIndex(edge.source_handle);
+      assignment.sourceHandle = explicitIndex !== null
+        ? outputHandleIds[explicitIndex] ?? outputHandleIds[index] ?? outputHandleIds[0]
+        : outputHandleIds[index] ?? outputHandleIds[0];
       edgeHandles.set(edge.id, assignment);
     });
   }
@@ -129,7 +143,7 @@ export function getAutoLayoutPositions(flowNodes: FlowNode[], flowEdges: FlowEdg
   g.setGraph({
     rankdir: 'LR',
     nodesep: 60,
-    ranksep: 140,
+    ranksep: 70,
     marginx: 40,
     marginy: 40,
   });

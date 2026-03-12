@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
 import {
   Workflow, List, PanelRightOpen, PanelRightClose, Loader2,
-  Plus, LayoutGrid, MonitorDot, BarChart3, RefreshCcw, Save, Route, ScanSearch,
-  AlertCircle, Wifi, WifiOff,
+  Plus, LayoutGrid, MonitorDot, BarChart3, RefreshCcw, Route, ScanSearch,
+  AlertCircle, Wifi, WifiOff, Camera, Trash2,
 } from 'lucide-react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useUiStore } from '@/stores/uiStore';
@@ -34,12 +34,14 @@ export default function BrumFlowPage() {
     initSocket,
     pathCount,
     maxSyncState,
-    saveGraph,
     resolvePaths,
+    selectedNodeId,
+    removeNode,
+    importCamerasFromMax,
   } = useFlowStore();
 
   const [socketConnected, setSocketConnected] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isImportingCameras, setIsImportingCameras] = useState(false);
 
   useEffect(() => {
     loadAll();
@@ -66,15 +68,15 @@ export default function BrumFlowPage() {
     void loadAll();
   }, [activeSceneId, setActiveScene, loadAll]);
 
-  const handleSaveNow = useCallback(async () => {
-    setIsSaving(true);
+  const handleImportCameras = useCallback(async () => {
+    setIsImportingCameras(true);
     try {
-      await saveGraph();
+      await importCamerasFromMax();
       await resolvePaths();
     } finally {
-      setIsSaving(false);
+      setIsImportingCameras(false);
     }
-  }, [saveGraph, resolvePaths]);
+  }, [importCamerasFromMax, resolvePaths]);
 
   if (loading && scenes.length === 0) {
     return (
@@ -172,17 +174,23 @@ export default function BrumFlowPage() {
             />
             <div className="mx-1 h-4 w-px bg-border" />
             <ToolbarButton
-              icon={Save}
-              tooltip="Save graph now"
-              onClick={handleSaveNow}
-              disabled={!activeSceneId || loading || isSaving}
-              loading={isSaving}
+              icon={Camera}
+              tooltip="Import all cameras from 3ds Max"
+              onClick={handleImportCameras}
+              disabled={!activeSceneId || loading || isImportingCameras}
+              loading={isImportingCameras}
             />
             <ToolbarButton
               icon={Route}
               tooltip="Resolve paths"
               onClick={() => void resolvePaths()}
               disabled={!activeSceneId || loading}
+            />
+            <ToolbarButton
+              icon={Trash2}
+              tooltip={selectedNodeId ? 'Delete selected node' : 'No node selected'}
+              onClick={() => selectedNodeId && removeNode(selectedNodeId)}
+              disabled={!selectedNodeId || loading}
             />
             <ToolbarButton
               icon={RefreshCcw}

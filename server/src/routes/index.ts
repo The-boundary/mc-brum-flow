@@ -4,7 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { submitDeadlineJob } from '../services/deadline.js';
 import { resolveFlowPaths } from '../services/flowResolver.js';
 import { config } from '../config.js';
-import { probeMaxMcp } from '../services/max-mcp-client.js';
+import { executeMaxMcpScript, probeMaxMcp } from '../services/max-mcp-client.js';
 import {
   getMaxSyncState,
   queueAllScenesSync,
@@ -20,6 +20,24 @@ function triggerBackgroundSync(job: Promise<unknown>, context: Record<string, un
   void job.catch((error) => {
     logger.error({ err: error, ...context }, 'Background Max sync scheduling failed');
   });
+}
+
+function buildImportCamerasScript() {
+  return `(
+local cameraJson = #()
+for cam in cameras do (
+  local camName = try (cam.name as string) catch ""
+  local camClass = try ((classOf cam) as string) catch ""
+  local camHandle = try (getHandleByAnim cam) catch 0
+  append cameraJson ("{\\\"name\\\":\\\"" + MCP_Server.escapeJsonString camName + "\\\",\\\"max_handle\\\":" + (camHandle as string) + ",\\\"max_class\\\":\\\"" + MCP_Server.escapeJsonString camClass + "\\\"}")
+)
+local joined = ""
+for i = 1 to cameraJson.count do (
+  if i > 1 do joined += ","
+  joined += cameraJson[i]
+)
+"[" + joined + "]"
+)`;
 }
 
 async function loadResolvedSceneData(sceneId: string) {
@@ -242,6 +260,51 @@ router.delete('/cameras/:id', async (req: Request, res: Response, next: NextFunc
       );
     }
     res.json({ success: true });
+  } catch (e) { next(e); }
+});
+
+router.post('/cameras/import-from-max', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scene_id } = req.body;
+    if (!scene_id) {
+      return res.status(400).json({ success: false, error: 'scene_id required' });
+    }
+
+    const sceneResult = await dbQuery<{ instance_host: string }>('SELECT instance_host FROM scenes WHERE id = $1', [scene_id]);
+    const scene = sceneResult.rows[0];
+    if (!scene) {
+      return res.status(404).json({ success: false, error: 'Scene not found' });
+    }
+
+    const host = typeof scene.instance_host === 'string' && scene.instance_host.trim().length > 0
+      ? scene.instance_host.trim()
+      : config.maxHost;
+
+    const response = await executeMaxMcpScript(buildImportCamerasScript(), 30_000, { host, port: config.maxPort });
+    const parsed = JSON.parse(response.result || '[]') as Array<{ name: string; max_handle: number; max_class?: string }>;
+
+    const imported: unknown[] = [];
+    for (const camera of parsed) {
+      if (!camera?.name || typeof camera.max_handle !== 'number') continue;
+      const { rows } = await dbQuery(
+        `INSERT INTO cameras (scene_id, name, max_handle, max_class)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (scene_id, max_handle) DO UPDATE SET name = $2, max_class = $4, updated_at = NOW()
+         RETURNING *`,
+        [scene_id, camera.name, camera.max_handle, camera.max_class ?? '']
+      );
+      if (rows[0]) {
+        imported.push(rows[0]);
+        req.app.get('io')?.emit('camera:upserted', rows[0]);
+      }
+    }
+
+    triggerBackgroundSync(
+      queueSceneSync({ sceneId: scene_id, reason: 'cameras:imported-from-max' }),
+      { sceneId: scene_id },
+    );
+
+    res.json({ success: true, data: { imported: imported.length, cameras: imported } });
   } catch (e) { next(e); }
 });
 

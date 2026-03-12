@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import * as api from '@/lib/api';
 import { getSocket } from '@/lib/socket';
+import { getFlowHandleLayout } from '@/components/flow/flowLayout';
 import type { Scene, Camera, StudioDefault, NodeConfig, FlowNode, FlowEdge, NodeType, MaxSyncState } from '@shared/types';
 import { isValidConnection } from '@shared/types';
 import type { MaxHealthResult } from '@/lib/api';
@@ -62,7 +63,7 @@ interface FlowState {
   selectNode: (id: string | null) => void;
   addNode: (type: NodeType, position: { x: number; y: number }, configId?: string, cameraId?: string) => void;
   removeNode: (id: string) => void;
-  addEdge: (source: string, target: string) => boolean;
+  addEdge: (source: string, target: string, sourceHandle?: string | null, targetHandle?: string | null) => boolean;
   removeEdge: (id: string) => void;
   updateNodePosition: (id: string, position: { x: number; y: number }) => void;
   applyNodeLayout: (positions: Record<string, { x: number; y: number }>) => void;
@@ -80,6 +81,7 @@ interface FlowState {
   deleteNodeConfig: (id: string) => Promise<void>;
   initSocket: () => void;
   checkMaxHealth: () => Promise<void>;
+  importCamerasFromMax: () => Promise<number>;
   pushToMax: (pathKey?: string, pathIndex?: number) => Promise<boolean>;
   submitRender: (pathIndices: number[]) => Promise<boolean>;
   addSyncLog: (entry: Omit<SyncLogEntry, 'id' | 'timestamp'>) => void;
@@ -110,6 +112,18 @@ function scheduleStoreSave(
       }
     });
   }, 400);
+}
+
+function normalizeFlowEdges(flowNodes: FlowNode[], flowEdges: FlowEdge[]) {
+  const layout = getFlowHandleLayout(flowNodes, flowEdges);
+  return flowEdges.map((edge) => {
+    const assigned = layout.edgeHandles.get(edge.id);
+    return {
+      ...edge,
+      source_handle: edge.source_handle ?? assigned?.sourceHandle,
+      target_handle: edge.target_handle ?? assigned?.targetHandle,
+    };
+  });
 }
 
 export const useFlowStore = create<FlowState>()((set, get) => ({
@@ -146,6 +160,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
       let cameras: Camera[] = [];
       let flowNodes: FlowNode[] = [];
       let flowEdges: FlowEdge[] = [];
+      let flowEdgesWereNormalized = false;
       let viewport = { x: 0, y: 0, zoom: 1 };
       let maxSyncState: MaxSyncState | null = null;
 
@@ -158,7 +173,8 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
         cameras = cams;
         if (flowConfig) {
           flowNodes = flowConfig.nodes || [];
-          flowEdges = flowConfig.edges || [];
+          flowEdges = normalizeFlowEdges(flowNodes, flowConfig.edges || []);
+          flowEdgesWereNormalized = (flowConfig.edges || []).some((edge: FlowEdge) => !edge.source_handle || !edge.target_handle);
           viewport = flowConfig.viewport || viewport;
         }
         maxSyncState = syncState;
@@ -177,7 +193,12 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
         loading: false,
       });
 
-      if (activeId) get().resolvePaths();
+      if (activeId) {
+        if (flowEdgesWereNormalized) {
+          await get().saveGraph();
+        }
+        get().resolvePaths();
+      }
     } catch (err) {
       set({ loading: false, error: err instanceof Error ? err.message : 'Failed to load data' });
     }
@@ -191,14 +212,19 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
         api.fetchFlowConfig(id),
         api.fetchMaxSyncState(id),
       ]);
+      const normalizedEdges = normalizeFlowEdges(flowConfig?.nodes || [], flowConfig?.edges || []);
+      const flowEdgesWereNormalized = (flowConfig?.edges || []).some((edge: FlowEdge) => !edge.source_handle || !edge.target_handle);
       set({
         cameras: cams,
         flowNodes: flowConfig?.nodes || [],
-        flowEdges: flowConfig?.edges || [],
+        flowEdges: normalizedEdges,
         viewport: flowConfig?.viewport || { x: 0, y: 0, zoom: 1 },
         maxSyncState,
         loading: false,
       });
+      if (flowEdgesWereNormalized) {
+        await get().saveGraph();
+      }
       get().resolvePaths();
     } catch (err) {
       set({ loading: false, error: err instanceof Error ? err.message : 'Failed to load scene' });
@@ -244,19 +270,23 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     scheduleStoreSave(get().saveGraph, get().resolvePaths, true);
   },
 
-  addEdge: (source, target) => {
+  addEdge: (source, target, sourceHandle, targetHandle) => {
     const { flowNodes, flowEdges } = get();
     const sourceNode = flowNodes.find((n) => n.id === source);
     const targetNode = flowNodes.find((n) => n.id === target);
     if (!sourceNode || !targetNode) return false;
     if (!isValidConnection(sourceNode.type, targetNode.type)) return false;
     // Prevent duplicate edges
-    if (flowEdges.some((e) => e.source === source && e.target === target)) return false;
+    if (flowEdges.some((e) => e.source === source && e.target === target && e.source_handle === (sourceHandle ?? undefined) && e.target_handle === (targetHandle ?? undefined))) {
+      return false;
+    }
 
     const edge: FlowEdge = {
-      id: `edge_${source}_${target}`,
+      id: `edge_${source}_${sourceHandle ?? 'auto'}_${target}_${targetHandle ?? 'auto'}`,
       source,
       target,
+      ...(sourceHandle ? { source_handle: sourceHandle } : {}),
+      ...(targetHandle ? { target_handle: targetHandle } : {}),
     };
     set((s) => ({ flowEdges: [...s.flowEdges, edge] }));
     scheduleStoreSave(get().saveGraph, get().resolvePaths, true);
@@ -549,7 +579,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
       if (row.scene_id === activeSceneId) {
         set({
           flowNodes: row.nodes || [],
-          flowEdges: row.edges || [],
+          flowEdges: normalizeFlowEdges(row.nodes || [], row.edges || []),
           viewport: row.viewport || { x: 0, y: 0, zoom: 1 },
         });
         void get().resolvePaths();
@@ -581,6 +611,82 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
       set({ maxHealth: health });
     } catch (err) {
       set({ maxHealth: { connected: false, error: err instanceof Error ? err.message : 'Check failed', host: '', port: 0 } });
+    }
+  },
+
+  importCamerasFromMax: async () => {
+    const { activeSceneId } = get();
+    if (!activeSceneId) return 0;
+    try {
+      const result = await api.importCamerasFromMax(activeSceneId);
+      const importedCameras = Array.isArray(result.cameras) ? (result.cameras as Camera[]) : [];
+      let createdNodes = 0;
+
+      set((s) => {
+        const mergedCameras = [...s.cameras];
+        for (const camera of importedCameras) {
+          const existingIndex = mergedCameras.findIndex((entry) => entry.id === camera.id);
+          if (existingIndex >= 0) {
+            mergedCameras[existingIndex] = camera;
+          } else {
+            mergedCameras.push(camera);
+          }
+        }
+
+        const existingCameraIds = new Set(
+          s.flowNodes
+            .filter((node) => node.type === 'camera' && typeof node.camera_id === 'string')
+            .map((node) => node.camera_id as string)
+        );
+        const existingCameraNodes = s.flowNodes.filter((node) => node.type === 'camera');
+        const baseX = existingCameraNodes.length > 0
+          ? Math.min(...existingCameraNodes.map((node) => node.position.x))
+          : 80;
+        let nextY = existingCameraNodes.length > 0
+          ? Math.max(...existingCameraNodes.map((node) => node.position.y)) + 120
+          : 80;
+
+        const newCameraNodes: FlowNode[] = [];
+        for (const camera of importedCameras) {
+          if (existingCameraIds.has(camera.id)) continue;
+          existingCameraIds.add(camera.id);
+          createdNodes += 1;
+          newCameraNodes.push({
+            id: genNodeId(),
+            type: 'camera',
+            label: camera.name,
+            position: { x: baseX, y: nextY },
+            camera_id: camera.id,
+          });
+          nextY += 120;
+        }
+
+        return {
+          cameras: mergedCameras,
+          flowNodes: newCameraNodes.length > 0 ? [...s.flowNodes, ...newCameraNodes] : s.flowNodes,
+          selectedNodeId: newCameraNodes.length > 0 ? newCameraNodes[newCameraNodes.length - 1]?.id ?? s.selectedNodeId : s.selectedNodeId,
+        };
+      });
+
+      if (createdNodes > 0) {
+        await get().saveGraph();
+        await get().resolvePaths();
+      }
+
+      get().addSyncLog({
+        status: 'success',
+        reason: `cameras-imported:${result.imported}${createdNodes > 0 ? `:nodes-${createdNodes}` : ''}`,
+      });
+      return result.imported;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to import cameras';
+      set({ error: message });
+      get().addSyncLog({
+        status: 'error',
+        reason: 'cameras-imported',
+        error: message,
+      });
+      return 0;
     }
   },
 
