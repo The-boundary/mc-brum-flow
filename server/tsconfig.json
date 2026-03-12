@@ -8,7 +8,8 @@
     "rootDir": "..",
     "noEmit": false,
     "declaration": false,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["vitest/globals"]
   },
   "include": ["src/**/*", "../shared/**/*"]
 }

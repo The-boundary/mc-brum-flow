@@ -12,14 +12,24 @@
     "build:client": "npm run build --workspace=client",
     "start": "npm run start --workspace=server",
     "lint": "npm run lint --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces"
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest"
   },
-  "workspaces": ["server", "client", "shared"],
+  "workspaces": [
+    "server",
+    "client",
+    "shared"
+  ],
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@typescript-eslint/eslint-plugin": "^8.52.0",
     "@typescript-eslint/parser": "^8.52.0",
     "concurrently": "^8.2.2",
-    "typescript": "^5.3.3"
+    "jsdom": "^28.1.0",
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.0"
   },
   "engines": {
     "node": ">=20.0.0"

@@ -24,7 +24,7 @@ function triggerBackgroundSync(job: Promise<unknown>, context: Record<string, un
   });
 }
 
-function buildImportCamerasScript() {
+export function buildImportCamerasScript() {
   return `(
 fn bfEscJson s = (
   local out = ""
@@ -92,7 +92,7 @@ async function loadResolvedSceneData(sceneId: string) {
   };
 }
 
-function areSerializedValuesEqual(left: unknown, right: unknown) {
+export function areSerializedValuesEqual(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
