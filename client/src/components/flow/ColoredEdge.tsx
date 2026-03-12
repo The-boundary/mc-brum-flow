@@ -1,9 +1,18 @@
 import { memo, useState } from 'react';
 import { BaseEdge, getSmoothStepPath, type EdgeProps } from '@xyflow/react';
 
+import type { BranchLabelMeta } from './graphSemantics';
+
 const COLORS = {
   single: '#34d399',
   grouped: '#fb923c',
+};
+
+const LABEL_TONE_CLASSES: Record<BranchLabelMeta['tone'], string> = {
+  camera: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-100',
+  group: 'border-orange-500/40 bg-orange-500/15 text-orange-100',
+  mixed: 'border-sky-500/40 bg-sky-500/15 text-sky-100',
+  path: 'border-border bg-surface-100/95 text-foreground',
 };
 
 export const ColoredEdge = memo(({
@@ -17,7 +26,7 @@ export const ColoredEdge = memo(({
 }: EdgeProps & {
   data?: {
     cameraCount?: number;
-    hoverLabel?: string;
+    hoverLabel?: BranchLabelMeta;
     isPathHighlighted?: boolean;
     isPathDimmed?: boolean;
     shouldAnimateFlow?: boolean;
@@ -36,7 +45,8 @@ export const ColoredEdge = memo(({
   const isPathHighlighted = data?.isPathHighlighted === true;
   const isPathDimmed = data?.isPathDimmed === true;
   const shouldAnimateFlow = data?.shouldAnimateFlow === true;
-  const hoverLabel = data?.hoverLabel?.trim();
+  const hoverLabel = data?.hoverLabel;
+  const hoverLabelText = hoverLabel?.label?.trim();
 
   return (
     <>
@@ -48,7 +58,7 @@ export const ColoredEdge = memo(({
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-        {hoverLabel ? <title>{hoverLabel}</title> : null}
+        {hoverLabelText ? <title>{hoverLabelText}</title> : null}
       </path>
       <BaseEdge
         id={id}
@@ -73,7 +83,7 @@ export const ColoredEdge = memo(({
           }}
         />
       )}
-      {hoverLabel && isHovered && !isPathDimmed && (
+      {hoverLabel && hoverLabelText && isHovered && !isPathDimmed && (
         <foreignObject
           x={labelX - 60}
           y={labelY - 28}
@@ -81,8 +91,8 @@ export const ColoredEdge = memo(({
           height={24}
           style={{ overflow: 'visible', pointerEvents: 'none' }}
         >
-          <div className="inline-flex max-w-[160px] items-center justify-center rounded border border-border bg-surface-100/95 px-2 py-1 text-[10px] text-foreground shadow-lg backdrop-blur-sm">
-            <span className="truncate">{hoverLabel}</span>
+          <div className={`inline-flex max-w-[160px] items-center justify-center rounded border px-2 py-1 text-[10px] shadow-lg backdrop-blur-sm ${LABEL_TONE_CLASSES[hoverLabel.tone]}`}>
+            <span className="truncate">{hoverLabelText}</span>
           </div>
         </foreignObject>
       )}

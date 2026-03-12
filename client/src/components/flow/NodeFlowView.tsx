@@ -3,9 +3,11 @@ import {
   Background,
   BackgroundVariant,
   Controls,
+  getSmoothStepPath,
   MiniMap,
   ReactFlow,
   type Connection,
+  type ConnectionLineComponentProps,
   type Edge,
   type EdgeMouseHandler,
   type EdgeTypes,
@@ -47,6 +49,13 @@ import {
 } from './flowLayout';
 import { getFlowSemantics } from './graphSemantics';
 import { nodeTypes } from './nodes';
+
+const LABEL_TONE_CLASSES = {
+  camera: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-100',
+  group: 'border-orange-500/40 bg-orange-500/15 text-orange-100',
+  mixed: 'border-sky-500/40 bg-sky-500/15 text-sky-100',
+  path: 'border-border bg-surface-100/95 text-foreground',
+} as const;
 
 const edgeTypes: EdgeTypes = {
   colored: ColoredEdge,
@@ -150,6 +159,51 @@ function getMiniMapNodeColor(type?: string | null) {
   }
 }
 
+function BranchConnectionLine({
+  fromHandle,
+  fromNode,
+  fromPosition,
+  fromX,
+  fromY,
+  toPosition,
+  toX,
+  toY,
+}: ConnectionLineComponentProps<Node>) {
+  const [path] = getSmoothStepPath({
+    sourceX: fromX,
+    sourceY: fromY,
+    sourcePosition: fromPosition,
+    targetX: toX,
+    targetY: toY,
+    targetPosition: toPosition,
+    borderRadius: 8,
+  });
+
+  const outputHandleLabels = (fromNode.data as {
+    outputHandleLabels?: Record<string, { label: string; tone: keyof typeof LABEL_TONE_CLASSES }>;
+  } | undefined)?.outputHandleLabels ?? {};
+  const hoverLabel = fromHandle?.id ? outputHandleLabels[fromHandle.id] : undefined;
+
+  return (
+    <g>
+      <path d={path} fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth={2} strokeDasharray="8 8" />
+      {hoverLabel?.label ? (
+        <foreignObject
+          x={fromX + 12}
+          y={fromY - 14}
+          width={180}
+          height={28}
+          style={{ overflow: 'visible', pointerEvents: 'none' }}
+        >
+          <div className={`inline-flex max-w-[180px] items-center rounded border px-2 py-1 text-[10px] shadow-lg backdrop-blur-sm ${LABEL_TONE_CLASSES[hoverLabel.tone]}`}>
+            <span className="truncate">{hoverLabel.label}</span>
+          </div>
+        </foreignObject>
+      ) : null}
+    </g>
+  );
+}
+
 export function NodeFlowView() {
   const autoLayoutNonce = useUiStore((state) => state.autoLayoutNonce);
   const fitViewNonce = useUiStore((state) => state.fitViewNonce);
@@ -226,6 +280,7 @@ export function NodeFlowView() {
           config_id: node.config_id,
           hide_previous: node.hide_previous,
           enabled: node.enabled,
+          outputHandleLabels: semantics.outputHandleLabels.get(node.id) ?? {},
           isPathHighlighted: semantics.highlightedNodeIds.has(node.id),
           isPathDimmed: hasCameraSelection && !semantics.highlightedNodeIds.has(node.id),
           inputHandleIds: handleLayout.nodeHandles.get(node.id)?.inputHandleIds ?? [],
@@ -534,11 +589,13 @@ export function NodeFlowView() {
 
   useEffect(() => {
     if (!autoLayoutNonce) return;
-    const nextPositions = getAutoLayoutPositions(visibleFlowNodes, visibleStoreEdges);
+    const { flowNodes: nodes, flowEdges: edges } = useFlowStore.getState();
+    if (nodes.length === 0) return;
+    const nextPositions = getAutoLayoutPositions(nodes, edges);
     if (Object.keys(nextPositions).length === 0) return;
     applyNodeLayout(nextPositions);
     void reactFlowInstance.fitView({ duration: 280, padding: 0.15 });
-  }, [applyNodeLayout, autoLayoutNonce, reactFlowInstance, visibleFlowNodes, visibleStoreEdges]);
+  }, [applyNodeLayout, autoLayoutNonce, reactFlowInstance]);
 
   useEffect(() => {
     if (!fitViewNonce) return;
@@ -564,6 +621,7 @@ export function NodeFlowView() {
         onMoveEnd={(_event, nextViewport) => updateViewport(nextViewport)}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        connectionLineComponent={BranchConnectionLine}
         defaultViewport={viewport}
         fitView={false}
         minZoom={0.1}

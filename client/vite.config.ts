@@ -49,6 +49,21 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       sourcemap: true,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return;
+
+            if (id.includes('@xyflow') || id.includes('dagre') || id.includes('d3-')) {
+              return 'graph-vendor';
+            }
+
+            if (id.includes('lucide-react') || id.includes('date-fns')) {
+              return 'ui-vendor';
+            }
+          },
+        },
+      },
     },
   };
 });

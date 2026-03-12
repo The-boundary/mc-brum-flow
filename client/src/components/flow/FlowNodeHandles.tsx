@@ -1,10 +1,13 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react';
+
+import type { BranchLabelMeta } from './graphSemantics';
 
 interface FlowNodeHandlesProps {
   nodeId: string;
   inputHandleIds?: string[];
   outputHandleIds?: string[];
+  outputHandleLabels?: Record<string, BranchLabelMeta>;
   inputClassName: string;
   outputClassName: string;
 }
@@ -21,7 +24,9 @@ function renderHandles(
   handleIds: string[],
   type: 'source' | 'target',
   position: Position,
-  className: string
+  className: string,
+  labels?: Record<string, BranchLabelMeta>,
+  onHoverChange?: (handleId: string | null) => void
 ) {
   return handleIds.map((handleId, index) => (
     <Handle
@@ -31,6 +36,9 @@ function renderHandles(
       position={position}
       className={`flow-node__handle ${className}`}
       style={{ top: getHandleTop(index, handleIds.length) }}
+      title={labels?.[handleId]?.label}
+      onMouseEnter={() => onHoverChange?.(handleId)}
+      onMouseLeave={() => onHoverChange?.(null)}
     />
   ));
 }
@@ -39,11 +47,15 @@ export function FlowNodeHandles({
   nodeId,
   inputHandleIds = [],
   outputHandleIds = [],
+  outputHandleLabels = {},
   inputClassName,
   outputClassName,
 }: FlowNodeHandlesProps) {
   const updateNodeInternals = useUpdateNodeInternals();
+  const [hoveredOutputHandleId, setHoveredOutputHandleId] = useState<string | null>(null);
   const handleSignature = `${nodeId}:${inputHandleIds.join('|')}:${outputHandleIds.join('|')}`;
+  const hoveredOutputHandle = hoveredOutputHandleId ? outputHandleLabels[hoveredOutputHandleId] : null;
+  const hoveredOutputHandleIndex = hoveredOutputHandleId ? outputHandleIds.indexOf(hoveredOutputHandleId) : -1;
 
   useEffect(() => {
     updateNodeInternals(nodeId);
@@ -52,7 +64,15 @@ export function FlowNodeHandles({
   return (
     <>
       {renderHandles(inputHandleIds, 'target', Position.Left, inputClassName)}
-      {renderHandles(outputHandleIds, 'source', Position.Right, outputClassName)}
+      {renderHandles(outputHandleIds, 'source', Position.Right, outputClassName, outputHandleLabels, setHoveredOutputHandleId)}
+      {hoveredOutputHandle && hoveredOutputHandleIndex >= 0 ? (
+        <div
+          className={`pointer-events-none absolute right-3 z-10 -translate-y-1/2 rounded border px-1.5 py-0.5 text-[9px] shadow-md backdrop-blur-sm ${hoveredOutputHandle.tone === 'camera' ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-100' : hoveredOutputHandle.tone === 'group' ? 'border-orange-500/40 bg-orange-500/15 text-orange-100' : hoveredOutputHandle.tone === 'mixed' ? 'border-sky-500/40 bg-sky-500/15 text-sky-100' : 'border-border bg-surface-100/95 text-foreground'}`}
+          style={{ top: getHandleTop(hoveredOutputHandleIndex, outputHandleIds.length), transform: 'translate(100%, -50%)' }}
+        >
+          {hoveredOutputHandle.label}
+        </div>
+      ) : null}
     </>
   );
 }

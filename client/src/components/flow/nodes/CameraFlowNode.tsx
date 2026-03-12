@@ -3,6 +3,7 @@ import type { NodeProps } from '@xyflow/react';
 import { Camera, AlertTriangle } from 'lucide-react';
 import { useFlowStore } from '@/stores/flowStore';
 import { FlowNodeHandles } from '../FlowNodeHandles';
+import type { BranchLabelMeta } from '../graphSemantics';
 
 interface CameraFlowData {
   label: string;
@@ -10,6 +11,7 @@ interface CameraFlowData {
   isPathHighlighted?: boolean;
   isPathDimmed?: boolean;
   outputHandleIds?: string[];
+  outputHandleLabels?: Record<string, BranchLabelMeta>;
   [key: string]: unknown;
 }
 
@@ -26,7 +28,7 @@ export const CameraFlowNode = memo(({ id, data }: NodeProps & { data: CameraFlow
 
   return (
     <div
-      className={`rounded-lg border px-3 py-2 min-w-[150px] cursor-pointer transition-all ${
+      className={`relative rounded-lg border px-3 py-2 min-w-[150px] cursor-pointer transition-all ${
         isSelected
           ? 'border-emerald-400 bg-emerald-400/10 shadow-[0_0_12px_rgba(52,211,153,0.25)]'
           : isPathHighlighted
@@ -52,6 +54,7 @@ export const CameraFlowNode = memo(({ id, data }: NodeProps & { data: CameraFlow
       <FlowNodeHandles
         nodeId={id}
         outputHandleIds={data.outputHandleIds}
+        outputHandleLabels={data.outputHandleLabels}
         inputClassName="!bg-emerald-400 !border-emerald-600"
         outputClassName="!bg-emerald-400 !border-emerald-600"
       />

@@ -3,6 +3,7 @@ import type { NodeProps } from '@xyflow/react';
 import { FolderOpen, Eye, EyeOff } from 'lucide-react';
 import { useFlowStore } from '@/stores/flowStore';
 import { FlowNodeHandles } from '../FlowNodeHandles';
+import type { BranchLabelMeta } from '../graphSemantics';
 
 interface GroupFlowData {
   label: string;
@@ -11,6 +12,7 @@ interface GroupFlowData {
   isPathDimmed?: boolean;
   inputHandleIds?: string[];
   outputHandleIds?: string[];
+  outputHandleLabels?: Record<string, BranchLabelMeta>;
   [key: string]: unknown;
 }
 
@@ -28,7 +30,7 @@ export const GroupFlowNode = memo(({ id, data }: NodeProps & { data: GroupFlowDa
 
   return (
     <div
-      className={`rounded-lg border px-3 py-2 min-w-[150px] cursor-pointer transition-all ${
+      className={`relative rounded-lg border px-3 py-2 min-w-[150px] cursor-pointer transition-all ${
         isSelected
           ? 'border-orange-400 bg-orange-400/10 shadow-[0_0_12px_rgba(251,146,60,0.25)]'
           : isPathHighlighted
@@ -62,6 +64,7 @@ export const GroupFlowNode = memo(({ id, data }: NodeProps & { data: GroupFlowDa
         nodeId={id}
         inputHandleIds={data.inputHandleIds}
         outputHandleIds={data.outputHandleIds}
+        outputHandleLabels={data.outputHandleLabels}
         inputClassName="!bg-orange-400 !border-orange-600"
         outputClassName="!bg-orange-400 !border-orange-600"
       />

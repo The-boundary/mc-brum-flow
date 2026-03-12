@@ -1,8 +1,14 @@
 import type { FlowEdge, FlowNode } from '@shared/types';
 
+export interface BranchLabelMeta {
+  label: string;
+  tone: 'camera' | 'group' | 'mixed' | 'path';
+}
+
 export interface FlowSemantics {
   edgeCameraCounts: Map<string, number>;
-  edgeLabels: Map<string, string>;
+  edgeLabels: Map<string, BranchLabelMeta>;
+  outputHandleLabels: Map<string, Record<string, BranchLabelMeta>>;
   highlightedEdgeIds: Set<string>;
   highlightedNodeIds: Set<string>;
   selectedCameraNodeId: string | null;
@@ -43,6 +49,44 @@ function summarizeLabels(labels: Set<string>, fallback: string) {
   return `${sorted[0]} +${sorted.length - 1}`;
 }
 
+function buildBranchLabelMeta(cameraLabels: Set<string>, groupLabels: Set<string>): BranchLabelMeta {
+  const hasCameraLabels = cameraLabels.size > 0;
+  const hasGroupLabels = groupLabels.size > 0;
+
+  if (hasGroupLabels && cameraLabels.size > 1) {
+    return {
+      label: summarizeLabels(groupLabels, summarizeLabels(cameraLabels, 'Merged path')),
+      tone: 'group',
+    };
+  }
+
+  if (hasCameraLabels && hasGroupLabels) {
+    return {
+      label: `${summarizeLabels(cameraLabels, 'Path')} via ${summarizeLabels(groupLabels, 'Group')}`,
+      tone: 'mixed',
+    };
+  }
+
+  if (hasCameraLabels) {
+    return {
+      label: summarizeLabels(cameraLabels, 'Path'),
+      tone: 'camera',
+    };
+  }
+
+  if (hasGroupLabels) {
+    return {
+      label: summarizeLabels(groupLabels, 'Group'),
+      tone: 'group',
+    };
+  }
+
+  return {
+    label: 'Path',
+    tone: 'path',
+  };
+}
+
 function buildEdgeLabelMaps(flowNodes: FlowNode[], flowEdges: FlowEdge[]) {
   const nodesById = new Map(flowNodes.map((node) => [node.id, node]));
   const incomingEdges = new Map<string, FlowEdge[]>();
@@ -56,7 +100,8 @@ function buildEdgeLabelMaps(flowNodes: FlowNode[], flowEdges: FlowEdge[]) {
     }
   }
 
-  const edgeLabels = new Map<string, string>();
+  const edgeLabels = new Map<string, BranchLabelMeta>();
+  const outputHandleLabels = new Map<string, Record<string, BranchLabelMeta>>();
 
   function collectUpstream(nodeId: string, lane: number | null, visited: Set<string>) {
     const visitKey = `${nodeId}:${lane ?? 'any'}`;
@@ -90,13 +135,17 @@ function buildEdgeLabelMaps(flowNodes: FlowNode[], flowEdges: FlowEdge[]) {
   for (const edge of flowEdges) {
     const lane = parseHandleIndex(edge.source_handle) ?? parseHandleIndex(edge.target_handle);
     const upstream = collectUpstream(edge.source, lane, new Set<string>());
-    const label = upstream.groupLabels.size > 0
-      ? summarizeLabels(upstream.groupLabels, summarizeLabels(upstream.cameraLabels, 'Merged path'))
-      : summarizeLabels(upstream.cameraLabels, 'Path');
-    edgeLabels.set(edge.id, label);
+    const labelMeta = buildBranchLabelMeta(upstream.cameraLabels, upstream.groupLabels);
+    edgeLabels.set(edge.id, labelMeta);
+
+    if (edge.source_handle) {
+      const current = outputHandleLabels.get(edge.source) ?? {};
+      current[edge.source_handle] = labelMeta;
+      outputHandleLabels.set(edge.source, current);
+    }
   }
 
-  return edgeLabels;
+  return { edgeLabels, outputHandleLabels };
 }
 
 export function getFlowSemantics(
@@ -197,9 +246,12 @@ export function getFlowSemantics(
     edgeCameraCounts.set(edge.id, edgeCameraIds.get(edge.id)?.size ?? 0);
   }
 
+  const { edgeLabels, outputHandleLabels } = buildEdgeLabelMaps(flowNodes, flowEdges);
+
   return {
     edgeCameraCounts,
-    edgeLabels: buildEdgeLabelMaps(flowNodes, flowEdges),
+    edgeLabels,
+    outputHandleLabels,
     highlightedEdgeIds,
     highlightedNodeIds,
     selectedCameraNodeId,

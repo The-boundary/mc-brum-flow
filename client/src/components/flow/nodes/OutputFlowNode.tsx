@@ -3,6 +3,7 @@ import type { NodeProps } from '@xyflow/react';
 import { FileOutput } from 'lucide-react';
 import { useFlowStore } from '@/stores/flowStore';
 import { FlowNodeHandles } from '../FlowNodeHandles';
+import type { BranchLabelMeta } from '../graphSemantics';
 
 interface OutputFlowData {
   label: string;
@@ -11,6 +12,7 @@ interface OutputFlowData {
   isPathHighlighted?: boolean;
   isPathDimmed?: boolean;
   inputHandleIds?: string[];
+  outputHandleLabels?: Record<string, BranchLabelMeta>;
   [key: string]: unknown;
 }
 
@@ -32,7 +34,7 @@ export const OutputFlowNode = memo(({ id, data }: NodeProps & { data: OutputFlow
 
   return (
     <div
-      className={`rounded-lg border px-3 py-2 min-w-[160px] cursor-pointer transition-all ${
+      className={`relative rounded-lg border px-3 py-2 min-w-[160px] cursor-pointer transition-all ${
         isSelected
           ? 'border-fuchsia-400 bg-fuchsia-400/10 shadow-[0_0_12px_rgba(232,121,249,0.25)]'
           : isPathHighlighted

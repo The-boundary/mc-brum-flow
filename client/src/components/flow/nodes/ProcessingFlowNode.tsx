@@ -3,6 +3,7 @@ import type { NodeProps } from '@xyflow/react';
 import { Sun, Contrast, Layers, RectangleHorizontal, Gauge, Server, type LucideIcon } from 'lucide-react';
 import { useFlowStore } from '@/stores/flowStore';
 import { FlowNodeHandles } from '../FlowNodeHandles';
+import type { BranchLabelMeta } from '../graphSemantics';
 
 const NODE_STYLES: Record<string, { color: string; borderSelected: string; bgSelected: string; shadow: string; hoverBorder: string; badgeBg: string; badgeText: string; handleBg: string; handleBorder: string; icon: LucideIcon; label: string }> = {
   lightSetup:  { color: 'amber',  borderSelected: 'border-amber-400', bgSelected: 'bg-amber-400/10', shadow: 'shadow-[0_0_12px_rgba(251,191,36,0.25)]', hoverBorder: 'hover:border-amber-400/50', badgeBg: 'bg-amber-400/15', badgeText: 'text-amber-300', handleBg: '!bg-amber-400', handleBorder: '!border-amber-600', icon: Sun, label: 'Light Setup' },
@@ -30,6 +31,7 @@ interface ProcessingFlowData {
   isPathDimmed?: boolean;
   inputHandleIds?: string[];
   outputHandleIds?: string[];
+  outputHandleLabels?: Record<string, BranchLabelMeta>;
   [key: string]: unknown;
 }
 
@@ -51,7 +53,7 @@ export const ProcessingFlowNode = memo(({ id, data, type }: NodeProps & { data: 
 
   return (
     <div
-      className={`rounded-lg border px-3 py-2 min-w-[150px] cursor-pointer transition-all ${
+      className={`relative rounded-lg border px-3 py-2 min-w-[150px] cursor-pointer transition-all ${
         isSelected
           ? `${style.borderSelected} ${style.bgSelected} ${style.shadow}`
           : isPathHighlighted
@@ -78,6 +80,7 @@ export const ProcessingFlowNode = memo(({ id, data, type }: NodeProps & { data: 
         nodeId={id}
         inputHandleIds={data.inputHandleIds}
         outputHandleIds={data.outputHandleIds}
+        outputHandleLabels={data.outputHandleLabels}
         inputClassName={`${style.handleBg} ${style.handleBorder}`}
         outputClassName={`${style.handleBg} ${style.handleBorder}`}
       />
