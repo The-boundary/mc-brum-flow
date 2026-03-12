@@ -130,6 +130,14 @@ export async function pingMaxMcp(timeoutMs = 5_000, options?: MaxMcpConnectionOp
   return sendMaxMcpCommand('', 'ping', timeoutMs, options);
 }
 
+export async function probeMaxMcp(timeoutMs = 5_000, options?: MaxMcpConnectionOptions) {
+  try {
+    return await pingMaxMcp(timeoutMs, options);
+  } catch {
+    return executeMaxMcpScript('1+1', timeoutMs, options);
+  }
+}
+
 function stripBom(input: string) {
   return input.charCodeAt(0) === 0xfeff ? input.slice(1) : input;
 }
