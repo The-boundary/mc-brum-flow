@@ -42,7 +42,7 @@ fn bfEscJson s = (
   out
 )
 local cameraJson = #()
-for cam in cameras do (
+for cam in cameras where (superClassOf cam == camera) do (
   local camName = try (cam.name as string) catch ""
   local camClass = try ((classOf cam) as string) catch ""
   local camHandle = try ((getHandleByAnim cam) as integer) catch 0
