@@ -7,11 +7,12 @@ export interface AppError extends Error {
   isOperational?: boolean;
 }
 
-export function errorHandler(err: AppError, req: Request, res: Response, _next: NextFunction) {
-  const statusCode = err.statusCode || 500;
-  logger.error({ err, requestId: req.headers['x-request-id'], path: req.path, method: req.method });
+export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
+  const error = err instanceof Error ? err : new Error(typeof err === 'string' ? err : 'Internal Server Error');
+  const statusCode = (err as AppError)?.statusCode || 500;
+  logger.error({ err: error, requestId: req.headers['x-request-id'], path: req.path, method: req.method });
   res.status(statusCode).json({
-    error: { message: err.message || 'Internal Server Error', ...(config.nodeEnv === 'development' && { stack: err.stack }) },
+    error: { message: error.message || 'Internal Server Error', ...(config.nodeEnv === 'development' && { stack: error.stack }) },
     meta: { timestamp: new Date().toISOString(), requestId: req.headers['x-request-id'] || 'unknown' },
   });
 }

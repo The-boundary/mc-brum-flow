@@ -25,8 +25,8 @@ function AppShellLayout() {
 
 export default function App() {
   return (
-    <ErrorBoundary>
-      <Suspense fallback={<RouteFallback />}>
+    <Suspense fallback={<RouteFallback />}>
+      <ErrorBoundary>
         <Routes>
           <Route path="/auth/login" element={<LoginPage />} />
           <Route element={<ProtectedRoute />}>
@@ -36,7 +36,7 @@ export default function App() {
             </Route>
           </Route>
         </Routes>
-      </Suspense>
-    </ErrorBoundary>
+      </ErrorBoundary>
+    </Suspense>
   );
 }

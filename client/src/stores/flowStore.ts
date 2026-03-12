@@ -113,7 +113,10 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
         api.fetchStudioDefaults(),
         api.fetchNodeConfigs(),
       ]);
-      const activeId = scenes[0]?.id ?? null;
+      const scenesList = Array.isArray(scenes) ? scenes : [];
+      const defaultsList = Array.isArray(defaults) ? defaults : [];
+      const configsList = Array.isArray(configs) ? configs : [];
+      const activeId = scenesList[0]?.id ?? null;
 
       let cameras: Camera[] = [];
       let flowNodes: FlowNode[] = [];
@@ -137,11 +140,11 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
       }
 
       set({
-        scenes,
+        scenes: scenesList,
         activeSceneId: activeId,
         cameras,
-        studioDefaults: defaults,
-        nodeConfigs: configs,
+        studioDefaults: defaultsList,
+        nodeConfigs: configsList,
         flowNodes,
         flowEdges,
         viewport,
@@ -423,8 +426,8 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     try {
       const result = await api.resolvePaths(activeSceneId);
       set({ resolvedPaths: result.paths, pathCount: result.count });
-    } catch {
-      // Non-critical — paths will be empty
+    } catch (err) {
+      console.warn('Path resolution failed:', err instanceof Error ? err.message : err);
       set({ resolvedPaths: [], pathCount: 0 });
     }
   },
@@ -465,6 +468,18 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   initSocket: () => {
     const socket = getSocket();
 
+    // Remove all existing listeners to prevent duplicates on re-mount
+    socket.removeAllListeners('scene:created');
+    socket.removeAllListeners('scene:deleted');
+    socket.removeAllListeners('camera:upserted');
+    socket.removeAllListeners('camera:deleted');
+    socket.removeAllListeners('studio-defaults:updated');
+    socket.removeAllListeners('node-config:created');
+    socket.removeAllListeners('node-config:updated');
+    socket.removeAllListeners('node-config:deleted');
+    socket.removeAllListeners('flow-config:updated');
+    socket.removeAllListeners('max-sync:updated');
+
     socket.on('scene:created', (row: Scene) => {
       set((s) => ({ scenes: [...s.scenes.filter((sc) => sc.id !== row.id), row] }));
     });
@@ -488,20 +503,20 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
 
     socket.on('studio-defaults:updated', (row: StudioDefault) => {
       set((s) => ({ studioDefaults: s.studioDefaults.map((d) => (d.id === row.id ? row : d)) }));
-      get().resolvePaths();
+      void get().resolvePaths();
     });
 
     socket.on('node-config:created', (row: NodeConfig) => {
       set((s) => ({ nodeConfigs: [...s.nodeConfigs.filter((c) => c.id !== row.id), row] }));
-      get().resolvePaths();
+      void get().resolvePaths();
     });
     socket.on('node-config:updated', (row: NodeConfig) => {
       set((s) => ({ nodeConfigs: s.nodeConfigs.map((c) => (c.id === row.id ? row : c)) }));
-      get().resolvePaths();
+      void get().resolvePaths();
     });
     socket.on('node-config:deleted', ({ id }: { id: string }) => {
       set((s) => ({ nodeConfigs: s.nodeConfigs.filter((c) => c.id !== id) }));
-      get().resolvePaths();
+      void get().resolvePaths();
     });
 
     socket.on('flow-config:updated', (row: any) => {
@@ -512,7 +527,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
           flowEdges: row.edges || [],
           viewport: row.viewport || { x: 0, y: 0, zoom: 1 },
         });
-        get().resolvePaths();
+        void get().resolvePaths();
       }
     });
 

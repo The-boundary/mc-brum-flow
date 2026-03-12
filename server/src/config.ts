@@ -12,6 +12,10 @@ const envSchema = z.object({
   MAX_HOST: z.string().default('127.0.0.1'),
   MAX_PORT: z.string().default('8765'),
   MAX_SYNC_DEBOUNCE_MS: z.string().default('250'),
+  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+  SUPABASE_URL: z.string().min(1, 'SUPABASE_URL is required'),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY is required'),
+  SUPABASE_JWT_SECRET: z.string().min(1, 'SUPABASE_JWT_SECRET is required'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -28,4 +32,8 @@ export const config = {
   maxHost: parsed.data.MAX_HOST,
   maxPort: parseInt(parsed.data.MAX_PORT, 10),
   maxSyncDebounceMs: parseInt(parsed.data.MAX_SYNC_DEBOUNCE_MS, 10),
+  databaseUrl: parsed.data.DATABASE_URL,
+  supabaseUrl: parsed.data.SUPABASE_URL,
+  supabaseServiceRoleKey: parsed.data.SUPABASE_SERVICE_ROLE_KEY,
+  supabaseJwtSecret: parsed.data.SUPABASE_JWT_SECRET,
 } as const;

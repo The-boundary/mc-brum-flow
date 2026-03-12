@@ -8,8 +8,27 @@ export function getSocket(): Socket {
       autoConnect: true,
       reconnection: true,
       reconnectionDelay: 1000,
-      reconnectionAttempts: 10,
+      reconnectionDelayMax: 10000,
+      reconnectionAttempts: Infinity,
+      timeout: 20000,
+    });
+
+    socket.on('connect_error', (err) => {
+      console.warn('Socket connection error:', err.message);
+    });
+
+    socket.on('disconnect', (reason) => {
+      if (reason === 'io server disconnect') {
+        socket?.connect();
+      }
     });
   }
   return socket;
+}
+
+export function disconnectSocket(): void {
+  if (socket) {
+    socket.disconnect();
+    socket = null;
+  }
 }

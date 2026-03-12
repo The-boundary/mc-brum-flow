@@ -1,7 +1,8 @@
-import { useEffect, useState, useRef, type ReactNode } from 'react';
+import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
 import {
   Workflow, List, PanelRightOpen, PanelRightClose, Loader2,
   Plus, LayoutGrid, MonitorDot, BarChart3, RefreshCcw, Save, Route, ScanSearch,
+  AlertCircle, Wifi, WifiOff,
 } from 'lucide-react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useUiStore } from '@/stores/uiStore';
@@ -10,6 +11,7 @@ import { NodeFlowView } from '@/components/flow/NodeFlowView';
 import { MatrixView } from '@/components/matrix/MatrixView';
 import { DetailPanel } from '@/components/detail/DetailPanel';
 import { OutputPreviewPanel } from '@/components/output/OutputPreviewPanel';
+import { getSocket } from '@/lib/socket';
 
 export default function BrumFlowPage() {
   const {
@@ -36,44 +38,78 @@ export default function BrumFlowPage() {
     resolvePaths,
   } = useFlowStore();
 
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
   useEffect(() => {
     loadAll();
     initSocket();
+
+    const socket = getSocket();
+    const onConnect = () => setSocketConnected(true);
+    const onDisconnect = () => setSocketConnected(false);
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    if (socket.connected) setSocketConnected(true);
+
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+    };
   }, [loadAll, initSocket]);
+
+  const handleRefreshScene = useCallback(() => {
+    if (activeSceneId) {
+      void setActiveScene(activeSceneId);
+      return;
+    }
+    void loadAll();
+  }, [activeSceneId, setActiveScene, loadAll]);
+
+  const handleSaveNow = useCallback(async () => {
+    setIsSaving(true);
+    try {
+      await saveGraph();
+      await resolvePaths();
+    } finally {
+      setIsSaving(false);
+    }
+  }, [saveGraph, resolvePaths]);
 
   if (loading && scenes.length === 0) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <Loader2 className="w-5 h-5 animate-spin text-brand" />
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-brand/10 flex items-center justify-center">
+            <Loader2 className="w-5 h-5 animate-spin text-brand" />
+          </div>
+          <p className="text-xs text-muted-foreground">Loading scenes…</p>
+        </div>
       </div>
     );
   }
 
   if (error && scenes.length === 0) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center space-y-2">
-          <p className="text-sm text-red-400">{error}</p>
-          <button onClick={loadAll} className="text-xs text-brand hover:underline">Retry</button>
+      <div className="flex h-screen items-center justify-center p-6">
+        <div className="max-w-sm w-full text-center space-y-4">
+          <div className="mx-auto w-12 h-12 rounded-xl bg-error/10 flex items-center justify-center">
+            <AlertCircle className="w-6 h-6 text-error" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-foreground">Failed to load</h3>
+            <p className="text-xs text-muted-foreground">{error}</p>
+          </div>
+          <button
+            onClick={loadAll}
+            className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-xs font-medium text-background hover:bg-brand-500 transition-colors"
+          >
+            <RefreshCcw className="w-3.5 h-3.5" /> Try Again
+          </button>
         </div>
       </div>
     );
   }
-
-  const handleRefreshScene = () => {
-    if (activeSceneId) {
-      void setActiveScene(activeSceneId);
-      return;
-    }
-
-    void loadAll();
-  };
-
-  const handleSaveNow = () => {
-    void saveGraph().then(async () => {
-      await resolvePaths();
-    });
-  };
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -91,7 +127,7 @@ export default function BrumFlowPage() {
                   : 'text-muted-foreground hover:text-foreground hover:bg-surface-200/50'
               }`}
             >
-              <MonitorDot className={`w-3 h-3 ${scene.is_active ? 'text-green-400' : 'text-muted-foreground'}`} />
+              <MonitorDot className={`w-3 h-3 shrink-0 ${scene.is_active ? 'text-green-400' : 'text-fg-dim'}`} />
               <span className="truncate max-w-[200px]">{scene.name}</span>
             </button>
           ))}
@@ -139,7 +175,8 @@ export default function BrumFlowPage() {
               icon={Save}
               tooltip="Save graph now"
               onClick={handleSaveNow}
-              disabled={!activeSceneId || loading}
+              disabled={!activeSceneId || loading || isSaving}
+              loading={isSaving}
             />
             <ToolbarButton
               icon={Route}
@@ -155,8 +192,13 @@ export default function BrumFlowPage() {
             />
           </div>
 
-          {/* Right: view toggle + detail panel */}
+          {/* Right: view toggle + status + detail panel */}
           <div className="flex flex-1 items-center justify-end gap-2">
+            {/* Socket status indicator */}
+            <div className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${socketConnected ? 'text-emerald-400' : 'text-red-400'}`}>
+              {socketConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+            </div>
+
             {loading && (
               <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
             )}
@@ -214,6 +256,20 @@ export default function BrumFlowPage() {
           </div>
         </div>
 
+        {/* Error banner for non-critical errors */}
+        {error && scenes.length > 0 && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-error/5 border-b border-error/20 text-xs text-error shrink-0">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">{error}</span>
+            <button
+              onClick={() => useFlowStore.setState({ error: null })}
+              className="ml-auto text-error/60 hover:text-error shrink-0"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {/* View content */}
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="flex-1 min-h-0">
@@ -244,11 +300,13 @@ function ToolbarButton({
   tooltip,
   onClick,
   disabled = false,
+  loading = false,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   tooltip: string;
   onClick?: () => void;
   disabled?: boolean;
+  loading?: boolean;
 }) {
   return (
     <Tooltip text={tooltip}>
@@ -261,7 +319,11 @@ function ToolbarButton({
             : 'text-muted-foreground hover:text-foreground hover:bg-surface-300'
         }`}
       >
-        <Icon className="w-3.5 h-3.5" />
+        {loading ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : (
+          <Icon className="w-3.5 h-3.5" />
+        )}
       </button>
     </Tooltip>
   );

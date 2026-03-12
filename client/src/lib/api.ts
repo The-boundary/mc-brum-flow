@@ -10,9 +10,16 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as any)?.error?.message || `API error: ${res.status}`);
   }
-  const json = await res.json();
-  if (json.success === false) throw new Error(json.error || 'Unknown error');
-  return json.data;
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch {
+    throw new Error(`API error: invalid JSON response (${res.status})`);
+  }
+  const data = json as Record<string, unknown>;
+  if (data.success === false) throw new Error((data.error as string) || 'Unknown error');
+  if (data.data === undefined) throw new Error('API error: response missing data field');
+  return data.data as T;
 }
 
 // Scenes
