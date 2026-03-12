@@ -20,6 +20,12 @@ interface UiState {
   requestAutoLayout: () => void;
   requestFitView: () => void;
 
+  // Drag mode toggles
+  linkSameType: boolean;
+  moveParents: boolean;
+  toggleLinkSameType: () => void;
+  toggleMoveParents: () => void;
+
   // Sidebar
   sidebarCollapsed: boolean;
   sidebarMobileOpen: boolean;
@@ -37,6 +43,8 @@ export const useUiStore = create<UiState>()(
       presetLibraryOpen: false,
       autoLayoutNonce: 0,
       fitViewNonce: 0,
+      linkSameType: false,
+      moveParents: false,
       sidebarCollapsed: false,
       sidebarMobileOpen: false,
 
@@ -47,6 +55,8 @@ export const useUiStore = create<UiState>()(
       togglePresetLibrary: () => set((s) => ({ presetLibraryOpen: !s.presetLibraryOpen })),
       requestAutoLayout: () => set((s) => ({ autoLayoutNonce: s.autoLayoutNonce + 1 })),
       requestFitView: () => set((s) => ({ fitViewNonce: s.fitViewNonce + 1 })),
+      toggleLinkSameType: () => set((s) => ({ linkSameType: !s.linkSameType })),
+      toggleMoveParents: () => set((s) => ({ moveParents: !s.moveParents })),
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       setSidebarMobileOpen: (open) => set({ sidebarMobileOpen: open }),
     }),

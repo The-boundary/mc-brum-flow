@@ -30,11 +30,9 @@ import {
   Gauge,
   Keyboard,
   Layers,
-  Link2,
   RectangleHorizontal,
   Server,
   Sun,
-  Unlink2,
 } from 'lucide-react';
 
 import type { FlowEdge, FlowNode, NodeType } from '@shared/types';
@@ -230,8 +228,8 @@ export function NodeFlowView() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [autoSuggest, setAutoSuggest] = useState<AutoSuggestState | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const [linkSameType, setLinkSameType] = useState(false);
-  const [moveChildren, setMoveChildren] = useState(false);
+  const linkSameType = useUiStore((s) => s.linkSameType);
+  const moveParents = useUiStore((s) => s.moveParents);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingConnectionRef = useRef<PendingConnectionState | null>(null);
   const autoSuggestJustSetRef = useRef(false);
@@ -416,8 +414,8 @@ export function NodeFlowView() {
           }
         }
 
-        // Move children: move all upstream/parent nodes
-        if (moveChildren) {
+        // Move parents: move all upstream/parent nodes
+        if (moveParents) {
           const upstreamIds = getUpstreamNodeIds(change.id);
           for (const node of nodes) {
             if (upstreamIds.has(node.id) && !alreadyMoved.has(node.id)) {
@@ -445,7 +443,7 @@ export function NodeFlowView() {
           updateNodePosition(change.id, change.position);
 
           // Also persist co-moved nodes
-          if (linkSameType || moveChildren) {
+          if (linkSameType || moveParents) {
             const draggedNode = nodes.find((n) => n.id === change.id);
             if (draggedNode) {
               const saved = new Set<string>([change.id]);
@@ -457,7 +455,7 @@ export function NodeFlowView() {
                   }
                 }
               }
-              if (moveChildren) {
+              if (moveParents) {
                 const upstreamIds = getUpstreamNodeIds(change.id);
                 for (const node of nodes) {
                   if (upstreamIds.has(node.id) && !saved.has(node.id)) {
@@ -473,15 +471,23 @@ export function NodeFlowView() {
         }
       }
     },
-    [onNodesChange, scheduleSave, updateNodePosition, linkSameType, moveChildren, nodes, getUpstreamNodeIds]
+    [onNodesChange, scheduleSave, updateNodePosition, linkSameType, moveParents, nodes, getUpstreamNodeIds]
   );
 
   const onConnect: OnConnect = useCallback(
     (params: Connection) => {
       if (!params.source || !params.target) return;
-      if (storeAddEdge(params.source, params.target, params.sourceHandle, params.targetHandle)) scheduleSave();
+      let changed = storeAddEdge(params.source, params.target, params.sourceHandle, params.targetHandle);
+
+      // Multi-select: also wire all other selected nodes to the same target
+      const selectedNodes = nodes.filter((n) => n.selected && n.id !== params.source && n.id !== params.target);
+      for (const node of selectedNodes) {
+        if (storeAddEdge(node.id, params.target, null, params.targetHandle)) changed = true;
+      }
+
+      if (changed) scheduleSave();
     },
-    [scheduleSave, storeAddEdge]
+    [scheduleSave, storeAddEdge, nodes]
   );
 
   const onConnectStart: OnConnectStart = useCallback((_event, params) => {
@@ -659,25 +665,39 @@ export function NodeFlowView() {
         if (newest) {
           const targetHandleId = sourceHandleId ? sourceHandleId.replace('source-', 'target-') : null;
           storeAddEdge(sourceId, newest.id, sourceHandleId, targetHandleId);
+
+          // Multi-select: also wire all other selected nodes to the new node
+          const selectedNodes = nodes.filter((n) => n.selected && n.id !== sourceId);
+          for (const node of selectedNodes) {
+            storeAddEdge(node.id, newest.id, null, null);
+          }
         }
       }
       scheduleSave();
       setContextMenu(null);
       setAutoSuggest(null);
     },
-    [addNode, scheduleSave, storeAddEdge]
+    [addNode, scheduleSave, storeAddEdge, nodes]
   );
 
   const handleConnectToExistingNode = useCallback(
     (sourceId: string, targetId: string, sourceHandleId?: string | null) => {
       const targetHandleId = sourceHandleId ? sourceHandleId.replace('source-', 'target-') : null;
-      if (storeAddEdge(sourceId, targetId, sourceHandleId, targetHandleId)) {
+      let changed = storeAddEdge(sourceId, targetId, sourceHandleId, targetHandleId);
+
+      // Multi-select: also wire all other selected nodes to the target
+      const selectedNodes = nodes.filter((n) => n.selected && n.id !== sourceId && n.id !== targetId);
+      for (const node of selectedNodes) {
+        if (storeAddEdge(node.id, targetId, null, null)) changed = true;
+      }
+
+      if (changed) {
         scheduleSave();
         selectNode(targetId);
       }
       setAutoSuggest(null);
     },
-    [scheduleSave, selectNode, storeAddEdge]
+    [scheduleSave, selectNode, storeAddEdge, nodes]
   );
 
   useEffect(() => {
@@ -727,35 +747,6 @@ export function NodeFlowView() {
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(190 12% 20%)" />
         <Controls className="!bg-surface-200 !border-border !rounded-lg [&>button]:!bg-surface-300 [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-surface-400" />
 
-        {/* Drag mode toggles */}
-        <div className="absolute bottom-3 left-14 z-10 flex gap-1.5">
-          <button
-            type="button"
-            onClick={() => setLinkSameType((v) => !v)}
-            title={linkSameType ? 'Same-type linking ON — drag one to move all of same type' : 'Same-type linking OFF — nodes move independently'}
-            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium shadow-md backdrop-blur-sm transition-all ${
-              linkSameType
-                ? 'border-emerald-500/50 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
-                : 'border-border bg-surface-200/90 text-fg-muted hover:bg-surface-300 hover:text-foreground'
-            }`}
-          >
-            {linkSameType ? <Link2 className="h-3.5 w-3.5" /> : <Unlink2 className="h-3.5 w-3.5" />}
-            Link Type
-          </button>
-          <button
-            type="button"
-            onClick={() => setMoveChildren((v) => !v)}
-            title={moveChildren ? 'Move parents ON — drag a node to also move all upstream nodes' : 'Move parents OFF — only the dragged node moves'}
-            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium shadow-md backdrop-blur-sm transition-all ${
-              moveChildren
-                ? 'border-sky-500/50 bg-sky-500/20 text-sky-300 hover:bg-sky-500/30'
-                : 'border-border bg-surface-200/90 text-fg-muted hover:bg-surface-300 hover:text-foreground'
-            }`}
-          >
-            {moveChildren ? <Link2 className="h-3.5 w-3.5" /> : <Unlink2 className="h-3.5 w-3.5" />}
-            Move Parents
-          </button>
-        </div>
         <MiniMap
           className="!bg-surface-100 !border-border !rounded-lg"
           nodeColor={(node) => getMiniMapNodeColor(node.type)}

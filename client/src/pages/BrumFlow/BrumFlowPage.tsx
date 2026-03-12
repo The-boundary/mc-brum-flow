@@ -3,6 +3,7 @@ import {
   Workflow, List, PanelRightOpen, PanelRightClose, Loader2,
   Plus, LayoutGrid, MonitorDot, BarChart3, RefreshCcw, Route, ScanSearch,
   AlertCircle, Wifi, WifiOff, Camera, Trash2, Terminal, X, Info, CheckCircle2,
+  Link2, Unlink2, GitFork,
 } from 'lucide-react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useUiStore } from '@/stores/uiStore';
@@ -24,6 +25,10 @@ export default function BrumFlowPage() {
     toggleOutputPanel,
     requestAutoLayout,
     requestFitView,
+    linkSameType,
+    toggleLinkSameType,
+    moveParents,
+    toggleMoveParents,
   } = useUiStore();
   const {
     loading,
@@ -212,6 +217,21 @@ export default function BrumFlowPage() {
               tooltip="Reload current scene"
               onClick={handleRefreshScene}
               disabled={loading}
+            />
+          </div>
+
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-surface-200/60 px-1 py-0.5">
+            <ToolbarButton
+              icon={linkSameType ? Link2 : Unlink2}
+              tooltip={linkSameType ? 'Link Type ON — drag moves all of same type' : 'Link Type OFF'}
+              onClick={toggleLinkSameType}
+              active={linkSameType}
+            />
+            <ToolbarButton
+              icon={GitFork}
+              tooltip={moveParents ? 'Move Parents ON — drag also moves upstream nodes' : 'Move Parents OFF'}
+              onClick={toggleMoveParents}
+              active={moveParents}
             />
           </div>
 
@@ -426,12 +446,14 @@ function ToolbarButton({
   onClick,
   disabled = false,
   loading = false,
+  active = false,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   tooltip: string;
   onClick?: () => void;
   disabled?: boolean;
   loading?: boolean;
+  active?: boolean;
 }) {
   return (
     <Tooltip text={tooltip}>
@@ -441,7 +463,9 @@ function ToolbarButton({
         className={`p-1.5 rounded transition ${
           disabled
             ? 'cursor-not-allowed text-fg-dim opacity-40'
-            : 'text-muted-foreground hover:text-foreground hover:bg-surface-300'
+            : active
+              ? 'bg-brand/15 text-brand hover:bg-brand/25'
+              : 'text-muted-foreground hover:text-foreground hover:bg-surface-300'
         }`}
       >
         {loading ? (
