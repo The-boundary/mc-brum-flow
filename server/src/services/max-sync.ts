@@ -1,4 +1,4 @@
-import fallbackStudioDefaults from '../../../docs/max-parameters.json' assert { type: 'json' };
+import fallbackStudioDefaults from '../data/max-parameters.json' assert { type: 'json' };
 
 import type { MaxSyncState } from '../../../shared/types/index.js';
 

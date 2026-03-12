@@ -1,0 +1,2803 @@
+{
+  "corona_renderer": {
+    "category": "render",
+    "maxscript_target": "renderers.current",
+    "parameters": {
+      "geometry_accelerationStructure": {
+        "type": "enum",
+        "default": "Corona",
+        "label": "Geometry Acceleration Structure",
+        "options": [
+          "Embree",
+          "Corona"
+        ]
+      },
+      "shading_primarySolver": {
+        "type": "enum",
+        "default": "Path Tracing",
+        "label": "Shading Primary Solver",
+        "options": [
+          "None",
+          "Path Tracing"
+        ]
+      },
+      "shading_secondarySolver": {
+        "type": "enum",
+        "default": "UHD Cache",
+        "label": "Shading Secondary Solver",
+        "options": [
+          "None",
+          "Path Tracing",
+          "UHD Cache"
+        ]
+      },
+      "lights_samplesMult": {
+        "type": "float",
+        "default": 2.0,
+        "label": "Lights Samples Mult",
+        "min": 0.1,
+        "max": 100.0
+      },
+      "shading_renderEngine": {
+        "type": "enum",
+        "default": "Bucket",
+        "label": "Shading Render Engine",
+        "options": [
+          "Progressive",
+          "Bucket"
+        ]
+      },
+      "progressive_timeLimit": {
+        "type": "int",
+        "default": 0,
+        "label": "Progressive Time Limit",
+        "min": 0,
+        "max": 999999
+      },
+      "shading_giToAaRatio": {
+        "type": "int",
+        "default": 16,
+        "label": "Shading GI To AA Ratio",
+        "min": 1,
+        "max": 64
+      },
+      "image_prefilter_type": {
+        "type": "enum",
+        "default": "Blackman-Harris",
+        "label": "Image Prefilter Type",
+        "options": [
+          "None",
+          "Box",
+          "Tent",
+          "Gaussian",
+          "Mitchell-Netravali",
+          "Lanczos",
+          "Catmull-Rom",
+          "Blackman-Harris",
+          "Custom"
+        ]
+      },
+      "image_prefilter_width": {
+        "type": "float",
+        "default": 2.0,
+        "label": "Image Prefilter Width",
+        "min": 0.5,
+        "max": 10.0
+      },
+      "geometry_minInstanceSaving": {
+        "type": "int",
+        "default": 50000,
+        "label": "Geometry Min Instance Saving",
+        "min": 0,
+        "max": 1000000
+      },
+      "geometry_maxNormalDiff": {
+        "type": "float",
+        "default": 0.55,
+        "label": "Geometry Max Normal Diff",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "progressive_passLimit": {
+        "type": "int",
+        "default": 0,
+        "label": "Progressive Pass Limit",
+        "min": 0,
+        "max": 9999
+      },
+      "lights_solver": {
+        "type": "enum",
+        "default": "Full",
+        "label": "Lights Solver",
+        "options": [
+          "Full",
+          "Adaptive"
+        ]
+      },
+      "shading_maxSampleIntensity": {
+        "type": "float",
+        "default": 20.0,
+        "label": "Shading Max Sample Intensity",
+        "min": 0.0,
+        "max": 1000.0
+      },
+      "shading_maxRayDepth": {
+        "type": "int",
+        "default": 25,
+        "label": "Shading Max Ray Depth",
+        "min": 1,
+        "max": 100
+      },
+      "bg_overrideDirect": {
+        "type": "bool",
+        "default": false,
+        "label": "BG Override Direct"
+      },
+      "bg_overrideReflect": {
+        "type": "bool",
+        "default": false,
+        "label": "BG Override Reflect"
+      },
+      "renderStamp": {
+        "type": "string",
+        "default": "Chaos Corona | %c | Time: %pt | Passes: %pp | Primitives: %si | Rays/s: %pr",
+        "label": "Render Stamp"
+      },
+      "lights_renderHidden": {
+        "type": "bool",
+        "default": false,
+        "label": "Lights Render Hidden"
+      },
+      "bg_overrideRefract": {
+        "type": "bool",
+        "default": false,
+        "label": "BG Override Refract"
+      },
+      "alphaAlwaysSolid": {
+        "type": "bool",
+        "default": false,
+        "label": "Alpha Always Solid"
+      },
+      "system_randomSampler": {
+        "type": "int",
+        "default": 7,
+        "label": "System Random Sampler"
+      },
+      "renderstamp_use": {
+        "type": "bool",
+        "default": false,
+        "label": "Renderstamp Use"
+      },
+      "lights_solverFracLocal": {
+        "type": "float",
+        "default": 0.33,
+        "label": "Lights Solver Frac Local",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "lights_solverFractGlobal": {
+        "type": "float",
+        "default": 0.33,
+        "label": "Lights Solver Fract Global",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "lights_samplingMode": {
+        "type": "enum",
+        "default": "Balanced",
+        "label": "Lights Sampling Mode",
+        "options": [
+          "Traditional",
+          "Adaptive",
+          "Balanced"
+        ]
+      },
+      "geometry_displace_maxSizeScreen": {
+        "type": "float",
+        "default": 2.0,
+        "label": "Geometry Displace Max Size Screen",
+        "min": 0.1,
+        "max": 100.0
+      },
+      "mb_segmentsTransform": {
+        "type": "int",
+        "default": 6,
+        "label": "MB Segments Transform",
+        "min": 1,
+        "max": 32
+      },
+      "mb_segmentsGeometry": {
+        "type": "int",
+        "default": 3,
+        "label": "MB Segments Geometry",
+        "min": 1,
+        "max": 32
+      },
+      "mb_frameOffset": {
+        "type": "float",
+        "default": 0.0,
+        "label": "MB Frame Offset",
+        "min": -1.0,
+        "max": 1.0
+      },
+      "dof_bokehResolution": {
+        "type": "int",
+        "default": 500,
+        "label": "DOF Bokeh Resolution",
+        "min": 64,
+        "max": 4096
+      },
+      "dof_bokehBlades": {
+        "type": "int",
+        "default": 6,
+        "label": "DOF Bokeh Blades",
+        "min": 3,
+        "max": 32
+      },
+      "dof_bokehRotation": {
+        "type": "float",
+        "default": 0.0,
+        "label": "DOF Bokeh Rotation",
+        "min": 0.0,
+        "max": 360.0
+      },
+      "dof_use": {
+        "type": "bool",
+        "default": false,
+        "label": "DOF Use"
+      },
+      "dof_sensorWidth": {
+        "type": "float",
+        "default": 36.0,
+        "label": "DOF Sensor Width",
+        "min": 1.0,
+        "max": 200.0
+      },
+      "bg_texmapUseReflect": {
+        "type": "bool",
+        "default": true,
+        "label": "BG Texmap Use Reflect"
+      },
+      "bg_texmapUseMain": {
+        "type": "bool",
+        "default": true,
+        "label": "BG Texmap Use Main"
+      },
+      "bg_texmapUseRefract": {
+        "type": "bool",
+        "default": true,
+        "label": "BG Texmap Use Refract"
+      },
+      "bg_texmapUseDirect": {
+        "type": "bool",
+        "default": true,
+        "label": "BG Texmap Use Direct"
+      },
+      "mtlOverride_enabled": {
+        "type": "bool",
+        "default": false,
+        "label": "MTL Override Enabled"
+      },
+      "mtlOverride_includeMode": {
+        "type": "bool",
+        "default": false,
+        "label": "MTL Override Include Mode"
+      },
+      "bg_color": {
+        "type": "color",
+        "default": [
+          255,
+          255,
+          255
+        ],
+        "label": "BG Color"
+      },
+      "shading_exitColor": {
+        "type": "color",
+        "default": [
+          0,
+          0,
+          0
+        ],
+        "label": "Shading Exit Color"
+      },
+      "bg_colorDirect": {
+        "type": "color",
+        "default": [
+          0,
+          0,
+          0
+        ],
+        "label": "BG Color Direct"
+      },
+      "bg_colorReflect": {
+        "type": "color",
+        "default": [
+          0,
+          0,
+          0
+        ],
+        "label": "BG Color Reflect"
+      },
+      "bg_colorRefract": {
+        "type": "color",
+        "default": [
+          0,
+          0,
+          0
+        ],
+        "label": "BG Color Refract"
+      },
+      "geometry_displace_maxSizeWorld": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Geometry Displace Max Size World",
+        "min": 0.001,
+        "max": 10000.0
+      },
+      "mtlOverride": {
+        "type": "ref",
+        "default": null,
+        "label": "MTL Override"
+      },
+      "bg_texmap": {
+        "type": "ref",
+        "default": null,
+        "label": "BG Texmap"
+      },
+      "bg_texmapDirect": {
+        "type": "ref",
+        "default": null,
+        "label": "BG Texmap Direct"
+      },
+      "bg_texmapReflect": {
+        "type": "ref",
+        "default": null,
+        "label": "BG Texmap Reflect"
+      },
+      "bg_texmapRefract": {
+        "type": "ref",
+        "default": null,
+        "label": "BG Texmap Refract"
+      },
+      "dof_bokehTexmap": {
+        "type": "ref",
+        "default": null,
+        "label": "DOF Bokeh Texmap"
+      },
+      "globalVolumeMtl": {
+        "type": "ref",
+        "default": null,
+        "label": "Global Volume MTL"
+      },
+      "lights_enviroDistance": {
+        "type": "float",
+        "default": 10000.0,
+        "label": "Lights Enviro Distance",
+        "min": 0.0,
+        "max": 1000000.0
+      },
+      "dr_enable": {
+        "type": "bool",
+        "default": false,
+        "label": "DR Enable"
+      },
+      "dr_synchInterval": {
+        "type": "int",
+        "default": 60,
+        "label": "DR Synch Interval",
+        "min": 1,
+        "max": 600
+      },
+      "dr_searchDuringRender": {
+        "type": "bool",
+        "default": false,
+        "label": "DR Search During Render"
+      },
+      "system_drMaxDumpPixels": {
+        "type": "int",
+        "default": 3000000,
+        "label": "System DR Max Dump Pixels",
+        "min": 100000,
+        "max": 100000000
+      },
+      "globalVolumeMtl_use": {
+        "type": "bool",
+        "default": false,
+        "label": "Global Volume MTL Use"
+      },
+      "dof_bokehShape": {
+        "type": "enum",
+        "default": "Circular",
+        "label": "DOF Bokeh Shape",
+        "options": [
+          "Circular",
+          "Bladed",
+          "Custom"
+        ]
+      },
+      "mb_useCamera": {
+        "type": "bool",
+        "default": false,
+        "label": "MB Use Camera"
+      },
+      "mb_useGeometry": {
+        "type": "bool",
+        "default": false,
+        "label": "MB Use Geometry"
+      },
+      "gi_giCache_precalcMode": {
+        "type": "enum",
+        "default": "Calculate from Scratch",
+        "label": "GI GI Cache Precalc Mode",
+        "options": [
+          "Calculate from Scratch",
+          "Load from File",
+          "Calculate + Save"
+        ]
+      },
+      "gi_giCache_save": {
+        "type": "bool",
+        "default": false,
+        "label": "GI GI Cache Save"
+      },
+      "dr_retainExr": {
+        "type": "bool",
+        "default": false,
+        "label": "DR Retain EXR"
+      },
+      "vfb_clearBetweenRenders": {
+        "type": "bool",
+        "default": true,
+        "label": "VFB Clear Between Renders"
+      },
+      "colorMap_iso": {
+        "type": "float",
+        "default": 100.0,
+        "label": "Color Map Iso",
+        "min": 1.0,
+        "max": 100000.0
+      },
+      "colorMap_fStop": {
+        "type": "float",
+        "default": 16.0,
+        "label": "Color Map F Stop",
+        "min": 0.5,
+        "max": 128.0
+      },
+      "colorMap_shutterSpeed": {
+        "type": "float",
+        "default": 50.0,
+        "label": "Color Map Shutter Speed",
+        "min": 0.001,
+        "max": 10000.0
+      },
+      "geometry_embree_lowMemory": {
+        "type": "bool",
+        "default": false,
+        "label": "Geometry Embree Low Memory"
+      },
+      "geometry_embree_highQuality": {
+        "type": "bool",
+        "default": true,
+        "label": "Geometry Embree High Quality"
+      },
+      "geometry_embree_precise": {
+        "type": "bool",
+        "default": true,
+        "label": "Geometry Embree Precise"
+      },
+      "bg_source": {
+        "type": "enum",
+        "default": "Scene Environment",
+        "label": "BG Source",
+        "options": [
+          "Scene Environment",
+          "Corona"
+        ]
+      },
+      "geometry_displace_subdivType": {
+        "type": "enum",
+        "default": "Screen",
+        "label": "Geometry Displace Subdiv Type",
+        "options": [
+          "Screen",
+          "World"
+        ]
+      },
+      "interactive_giSamplesMult": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Interactive GI Samples Mult",
+        "min": 0.1,
+        "max": 10.0
+      },
+      "interactive_giPrecompMult": {
+        "type": "float",
+        "default": 0.1,
+        "label": "Interactive GI Precomp Mult",
+        "min": 0.01,
+        "max": 1.0
+      },
+      "interactive_hdQualityMult": {
+        "type": "float",
+        "default": 0.6,
+        "label": "Interactive HD Quality Mult",
+        "min": 0.01,
+        "max": 1.0
+      },
+      "multithreadedParsing": {
+        "type": "bool",
+        "default": true,
+        "label": "Multithreaded Parsing"
+      },
+      "cloneTexmaps": {
+        "type": "bool",
+        "default": true,
+        "label": "Clone Texmaps"
+      },
+      "gi_uhdcache_precision": {
+        "type": "float",
+        "default": 1.0,
+        "label": "GI UHDcache Precision",
+        "min": 0.1,
+        "max": 10.0
+      },
+      "gi_gicache_precompDensity": {
+        "type": "float",
+        "default": 1.0,
+        "label": "GI GIcache Precomp Density",
+        "min": 0.1,
+        "max": 10.0
+      },
+      "gi_uhdcache_interpolationCount": {
+        "type": "int",
+        "default": 5,
+        "label": "GI UHDcache Interpolation Count",
+        "min": 1,
+        "max": 20
+      },
+      "gi_uhdcache_normalSensitivity": {
+        "type": "float",
+        "default": 2.0,
+        "label": "GI UHDcache Normal Sensitivity",
+        "min": 0.0,
+        "max": 10.0
+      },
+      "gi_uhdcache_dirSensitivity": {
+        "type": "float",
+        "default": 3.0,
+        "label": "GI UHDcache Dir Sensitivity",
+        "min": 0.0,
+        "max": 10.0
+      },
+      "gi_uhdcache_glossThreshold": {
+        "type": "float",
+        "default": 0.9,
+        "label": "GI UHDcache Gloss Threshold",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "mtlEditor_lightsIntensity": {
+        "type": "float",
+        "default": 1.0,
+        "label": "MTL Editor Lights Intensity",
+        "min": 0.01,
+        "max": 100.0
+      },
+      "mtlEditor_lightsSize": {
+        "type": "float",
+        "default": 1.0,
+        "label": "MTL Editor Lights Size",
+        "min": 0.01,
+        "max": 100.0
+      },
+      "gi_gicache_preset": {
+        "type": "enum",
+        "default": "Custom",
+        "label": "GI GIcache Preset",
+        "options": [
+          "Custom",
+          "Very Low",
+          "Low",
+          "Medium",
+          "High",
+          "Very High"
+        ]
+      },
+      "interactive_passLimit": {
+        "type": "int",
+        "default": 200,
+        "label": "Interactive Pass Limit",
+        "min": 0,
+        "max": 9999
+      },
+      "mtlOverride_preserveDisplacement": {
+        "type": "bool",
+        "default": false,
+        "label": "MTL Override Preserve Displacement"
+      },
+      "colormap_additionalGamma": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Colormap Additional Gamma",
+        "min": -5.0,
+        "max": 5.0
+      },
+      "lockSamplingPattern": {
+        "type": "bool",
+        "default": true,
+        "label": "Lock Sampling Pattern"
+      },
+      "dr_numThreads": {
+        "type": "int",
+        "default": 0,
+        "label": "DR Num Threads",
+        "min": 0,
+        "max": 256
+      },
+      "renderSelected_mode": {
+        "type": "enum",
+        "default": "Disabled",
+        "label": "Render Selected Mode",
+        "options": [
+          "Disabled",
+          "Include",
+          "Exclude"
+        ]
+      },
+      "renderSelected_objectId": {
+        "type": "int",
+        "default": 0,
+        "label": "Render Selected Object Id"
+      },
+      "renderSelected_includeMode": {
+        "type": "bool",
+        "default": true,
+        "label": "Render Selected Include Mode"
+      },
+      "adaptivity_enable": {
+        "type": "bool",
+        "default": true,
+        "label": "Adaptivity Enable"
+      },
+      "adaptivity_targetError": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Adaptivity Target Error",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "denoise_filterType": {
+        "type": "enum",
+        "default": "None",
+        "label": "Denoise Filter Type",
+        "options": [
+          "None",
+          "Corona High Quality",
+          "NVIDIA OptiX",
+          "Intel OIDN"
+        ]
+      },
+      "denoise_sensitivity": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Denoise Sensitivity",
+        "min": 0.0,
+        "max": 2.0
+      },
+      "denoise_blendAmount": {
+        "type": "float",
+        "default": 0.65,
+        "label": "Denoise Blend Amount",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "shading_fbSampleClamp": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Shading Fb Sample Clamp",
+        "min": 0.0,
+        "max": 1000.0
+      },
+      "adaptivity_interval": {
+        "type": "int",
+        "default": 5,
+        "label": "Adaptivity Interval",
+        "min": 1,
+        "max": 100
+      },
+      "denoise_textureBlur": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Denoise Texture Blur",
+        "min": 0.0,
+        "max": 5.0
+      },
+      "shading_onlyElements": {
+        "type": "bool",
+        "default": false,
+        "label": "Shading Only Elements"
+      },
+      "bloomGlare_bloomIntensity": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Bloom Glare Bloom Intensity",
+        "min": 0.0,
+        "max": 100.0
+      },
+      "bloomGlare_glareIntensity": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Bloom Glare Glare Intensity",
+        "min": 0.0,
+        "max": 100.0
+      },
+      "bloomGlare_colorIntensity": {
+        "type": "float",
+        "default": 0.3,
+        "label": "Bloom Glare Color Intensity",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "bloomGlare_colorShift": {
+        "type": "float",
+        "default": 0.5,
+        "label": "Bloom Glare Color Shift",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "bloomGlare_streakCount": {
+        "type": "int",
+        "default": 3,
+        "label": "Bloom Glare Streak Count",
+        "min": 1,
+        "max": 20
+      },
+      "bloomGlare_rotation": {
+        "type": "float",
+        "default": 15.0,
+        "label": "Bloom Glare Rotation",
+        "min": 0.0,
+        "max": 360.0
+      },
+      "bloomGlare_streakBlur": {
+        "type": "float",
+        "default": 0.2,
+        "label": "Bloom Glare Streak Blur",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "bloomGlare_threshold": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Bloom Glare Threshold",
+        "min": 0.0,
+        "max": 100.0
+      },
+      "bloomGlare_enabled": {
+        "type": "bool",
+        "default": false,
+        "label": "Bloom Glare Enabled"
+      },
+      "lights_enviroSolver": {
+        "type": "int",
+        "default": 5,
+        "label": "Lights Enviro Solver"
+      },
+      "sharpening_amount": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Sharpening Amount",
+        "min": 0.0,
+        "max": 10.0
+      },
+      "sharpening_radius": {
+        "type": "float",
+        "default": 0.5,
+        "label": "Sharpening Radius",
+        "min": 0.1,
+        "max": 5.0
+      },
+      "renderstamp_fontSize": {
+        "type": "int",
+        "default": 8,
+        "label": "Renderstamp Font Size",
+        "min": 4,
+        "max": 72
+      },
+      "system_vfbRegions_enabled": {
+        "type": "bool",
+        "default": true,
+        "label": "System VFB Regions Enabled"
+      },
+      "colorMap_enabled": {
+        "type": "bool",
+        "default": true,
+        "label": "Color Map Enabled"
+      },
+      "blurring_radius": {
+        "type": "float",
+        "default": 1.33,
+        "label": "Blurring Radius",
+        "min": 0.1,
+        "max": 10.0
+      },
+      "sharpening_blurring_enable": {
+        "type": "bool",
+        "default": false,
+        "label": "Sharpening Blurring Enable"
+      },
+      "terminator_shadowShift": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Terminator Shadow Shift",
+        "min": -10.0,
+        "max": 10.0
+      },
+      "terminator_bumpShadowSharpness": {
+        "type": "float",
+        "default": 20.0,
+        "label": "Terminator Bump Shadow Sharpness",
+        "min": 0.0,
+        "max": 100.0
+      },
+      "interactive_forcePt": {
+        "type": "bool",
+        "default": false,
+        "label": "Interactive Force Pt"
+      },
+      "interactive_showFps": {
+        "type": "bool",
+        "default": false,
+        "label": "Interactive Show FPS"
+      },
+      "geometry_hairSubdivs": {
+        "type": "int",
+        "default": 8,
+        "label": "Geometry Hair Subdivs",
+        "min": 1,
+        "max": 32
+      },
+      "hairPlanes": {
+        "type": "bool",
+        "default": true,
+        "label": "Hair Planes"
+      },
+      "gi_giCache_file": {
+        "type": "string",
+        "default": "",
+        "label": "GI GI Cache File"
+      },
+      "lights_useAdaptiveSolver": {
+        "type": "bool",
+        "default": true,
+        "label": "Lights Use Adaptive Solver"
+      },
+      "interactive_measureFps": {
+        "type": "bool",
+        "default": false,
+        "label": "Interactive Measure FPS"
+      },
+      "mtlOverride_preserveLightMtl": {
+        "type": "bool",
+        "default": false,
+        "label": "MTL Override Preserve Light MTL"
+      },
+      "mtlOverride_preserveUnsupportedMtl": {
+        "type": "bool",
+        "default": false,
+        "label": "MTL Override Preserve Unsupported MTL"
+      },
+      "mtlOverride_preserveGlassMtl": {
+        "type": "bool",
+        "default": false,
+        "label": "MTL Override Preserve Glass MTL"
+      },
+      "geometry_displace_useAutoBump": {
+        "type": "bool",
+        "default": true,
+        "label": "Geometry Displace Use Auto Bump"
+      },
+      "denoise_blendEnabled": {
+        "type": "bool",
+        "default": true,
+        "label": "Denoise Blend Enabled"
+      },
+      "medium_legacyResolving": {
+        "type": "bool",
+        "default": false,
+        "label": "Medium Legacy Resolving"
+      },
+      "caustics_use": {
+        "type": "bool",
+        "default": false,
+        "label": "Caustics Use"
+      },
+      "caustics_dispersionRadius": {
+        "type": "float",
+        "default": 0.1,
+        "label": "Caustics Dispersion Radius",
+        "min": 0.001,
+        "max": 100.0
+      },
+      "caustics_motionBlurRadius": {
+        "type": "float",
+        "default": 0.1,
+        "label": "Caustics Motion Blur Radius",
+        "min": 0.001,
+        "max": 100.0
+      },
+      "caustics_alpha": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Caustics Alpha",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "caustics_initialRadius": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Caustics Initial Radius",
+        "min": 0.01,
+        "max": 100.0
+      },
+      "caustics_usefulnessRatio": {
+        "type": "float",
+        "default": 50000.0,
+        "label": "Caustics Usefulness Ratio",
+        "min": 1.0,
+        "max": 1000000.0
+      },
+      "caustics_onlyInCausticsElement": {
+        "type": "bool",
+        "default": false,
+        "label": "Caustics Only In Caustics Element"
+      },
+      "bg_mapCount": {
+        "type": "int",
+        "default": 2,
+        "label": "BG Map Count"
+      },
+      "caustics_emitFromEnviro": {
+        "type": "bool",
+        "default": true,
+        "label": "Caustics Emit From Enviro"
+      },
+      "shading_mapFiltering": {
+        "type": "enum",
+        "default": "SAT",
+        "label": "Shading Map Filtering",
+        "options": [
+          "None",
+          "SAT"
+        ]
+      },
+      "gi_fourkcache_granularity": {
+        "type": "float",
+        "default": 1.0,
+        "label": "GI Fourkcache Granularity",
+        "min": 0.1,
+        "max": 10.0
+      },
+      "gi_fourkcache_glossThreshold": {
+        "type": "float",
+        "default": 0.5,
+        "label": "GI Fourkcache Gloss Threshold",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "bloomGlare_size": {
+        "type": "float",
+        "default": 15.0,
+        "label": "Bloom Glare Size",
+        "min": 0.1,
+        "max": 100.0
+      },
+      "lensEffects_useLegacyEffect": {
+        "type": "bool",
+        "default": false,
+        "label": "Lens Effects Use Legacy Effect"
+      },
+      "lensEffects_customAperture": {
+        "type": "bool",
+        "default": false,
+        "label": "Lens Effects Custom Aperture"
+      },
+      "lensEffects_aperture_useBlades": {
+        "type": "bool",
+        "default": true,
+        "label": "Lens Effects Aperture Use Blades"
+      },
+      "lensEffects_aperture_sides": {
+        "type": "int",
+        "default": 6,
+        "label": "Lens Effects Aperture Sides",
+        "min": 3,
+        "max": 32
+      },
+      "lensEffects_aperture_rotation": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Lens Effects Aperture Rotation",
+        "min": 0.0,
+        "max": 360.0
+      },
+      "lensEffects_peripheralGrating_enabled": {
+        "type": "bool",
+        "default": false,
+        "label": "Lens Effects Peripheral Grating Enabled"
+      },
+      "lensEffects_peripheralGrating_density": {
+        "type": "float",
+        "default": 0.5,
+        "label": "Lens Effects Peripheral Grating Density",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "lensEffects_peripheralGrating_length": {
+        "type": "float",
+        "default": 0.3,
+        "label": "Lens Effects Peripheral Grating Length",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "lensEffects_peripheralGrating_zoom": {
+        "type": "float",
+        "default": 5.0,
+        "label": "Lens Effects Peripheral Grating Zoom",
+        "min": 0.1,
+        "max": 100.0
+      },
+      "lensEffects_peripheralGrating_slope": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Lens Effects Peripheral Grating Slope",
+        "min": -1.0,
+        "max": 1.0
+      },
+      "lensEffects_peripheralGrating_strength": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Lens Effects Peripheral Grating Strength",
+        "min": 0.0,
+        "max": 10.0
+      },
+      "lensEffects_occlusion_enabled": {
+        "type": "bool",
+        "default": false,
+        "label": "Lens Effects Occlusion Enabled"
+      },
+      "lensEffects_occlusion_symmetric": {
+        "type": "bool",
+        "default": true,
+        "label": "Lens Effects Occlusion Symmetric"
+      },
+      "lensEffects_occlusion_ratio": {
+        "type": "float",
+        "default": 0.2,
+        "label": "Lens Effects Occlusion Ratio",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "lensEffects_occlusion_rotation": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Lens Effects Occlusion Rotation",
+        "min": 0.0,
+        "max": 360.0
+      },
+      "lensEffects_occlusion_arc": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Lens Effects Occlusion Arc",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "lensEffects_scratches_enabled": {
+        "type": "bool",
+        "default": false,
+        "label": "Lens Effects Scratches Enabled"
+      },
+      "lensEffects_scratches_pattern": {
+        "type": "int",
+        "default": 0,
+        "label": "Lens Effects Scratches Pattern"
+      },
+      "lensEffects_scratches_symmetric": {
+        "type": "bool",
+        "default": true,
+        "label": "Lens Effects Scratches Symmetric"
+      },
+      "lensEffects_scratches_streaks": {
+        "type": "int",
+        "default": 1,
+        "label": "Lens Effects Scratches Streaks",
+        "min": 1,
+        "max": 20
+      },
+      "lensEffects_scratches_density": {
+        "type": "float",
+        "default": 0.5,
+        "label": "Lens Effects Scratches Density",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "lensEffects_scratches_length": {
+        "type": "float",
+        "default": 0.5,
+        "label": "Lens Effects Scratches Length",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "lensEffects_scratches_seed": {
+        "type": "int",
+        "default": 0,
+        "label": "Lens Effects Scratches Seed",
+        "min": 0,
+        "max": 99999
+      },
+      "lensEffects_scratches_slopeVar": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Lens Effects Scratches Slope Var",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "lensEffects_scratches_widthVar": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Lens Effects Scratches Width Var",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "lensEffects_scratches_zoom": {
+        "type": "float",
+        "default": 2.0,
+        "label": "Lens Effects Scratches Zoom",
+        "min": 0.1,
+        "max": 100.0
+      },
+      "lensEffects_scratches_rotation": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Lens Effects Scratches Rotation",
+        "min": 0.0,
+        "max": 360.0
+      },
+      "lensEffects_scratches_strength": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Lens Effects Scratches Strength",
+        "min": 0.0,
+        "max": 10.0
+      },
+      "lensEffects_dust_enabled": {
+        "type": "bool",
+        "default": false,
+        "label": "Lens Effects Dust Enabled"
+      },
+      "lensEffects_dust_pattern": {
+        "type": "int",
+        "default": 0,
+        "label": "Lens Effects Dust Pattern"
+      },
+      "lensEffects_dust_density": {
+        "type": "float",
+        "default": 0.5,
+        "label": "Lens Effects Dust Density",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "lensEffects_dust_radiusVar": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Lens Effects Dust Radius Var",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "lensEffects_dust_jitter": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Lens Effects Dust Jitter",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "lensEffects_dust_zoom": {
+        "type": "float",
+        "default": 2.0,
+        "label": "Lens Effects Dust Zoom",
+        "min": 0.1,
+        "max": 100.0
+      },
+      "lensEffects_dust_rotation": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Lens Effects Dust Rotation",
+        "min": 0.0,
+        "max": 360.0
+      },
+      "lensEffects_dust_strength": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Lens Effects Dust Strength",
+        "min": 0.0,
+        "max": 10.0
+      },
+      "gi_fourkcache_quality": {
+        "type": "float",
+        "default": 1.0,
+        "label": "GI Fourkcache Quality",
+        "min": 0.1,
+        "max": 10.0
+      },
+      "gi_fourkcache_outlierThreshold": {
+        "type": "float",
+        "default": 0.1,
+        "label": "GI Fourkcache Outlier Threshold",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "caustics_useAdaptivity": {
+        "type": "bool",
+        "default": true,
+        "label": "Caustics Use Adaptivity"
+      },
+      "standaloneMaps": {
+        "type": "bool",
+        "default": false,
+        "label": "Standalone Maps"
+      },
+      "caustic_includeMode": {
+        "type": "bool",
+        "default": false,
+        "label": "Caustic Include Mode"
+      },
+      "geometry_useInternalCoordinateSpace": {
+        "type": "bool",
+        "default": true,
+        "label": "Geometry Use Internal Coordinate Space"
+      },
+      "colorSpace": {
+        "type": "enum",
+        "default": "ACEScg",
+        "label": "Color Space",
+        "options": [
+          "sRGB",
+          "Linear",
+          "ACEScg"
+        ]
+      },
+      "mtlOverride_preserveSlicerMtl": {
+        "type": "bool",
+        "default": false,
+        "label": "MTL Override Preserve Slicer MTL"
+      },
+      "mtlOverride_preserveBumpMtl": {
+        "type": "bool",
+        "default": false,
+        "label": "MTL Override Preserve Bump MTL"
+      },
+      "mtlOverride_preserveOpacityMtl": {
+        "type": "bool",
+        "default": false,
+        "label": "MTL Override Preserve Opacity MTL"
+      },
+      "ooct_enable": {
+        "type": "bool",
+        "default": true,
+        "label": "OOCT Enable"
+      },
+      "caustics_photonsPerPixel": {
+        "type": "float",
+        "default": 1.5,
+        "label": "Caustics Photons Per Pixel",
+        "min": 0.1,
+        "max": 100.0
+      },
+      "dofSolver_enable": {
+        "type": "bool",
+        "default": false,
+        "label": "DOF Solver Enable"
+      },
+      "dofSolver_reprojectionCount": {
+        "type": "int",
+        "default": 64,
+        "label": "DOF Solver Reprojection Count",
+        "min": 1,
+        "max": 1024
+      },
+      "dofSolver_budget": {
+        "type": "float",
+        "default": 5.0,
+        "label": "DOF Solver Budget",
+        "min": 0.1,
+        "max": 100.0
+      },
+      "lights_envLegacyFiltering": {
+        "type": "bool",
+        "default": false,
+        "label": "Lights Env Legacy Filtering"
+      },
+      "denoise_oidnBackend": {
+        "type": "enum",
+        "default": "CPU",
+        "label": "Denoise Oidn Backend",
+        "options": [
+          "CPU",
+          "SYCL",
+          "CUDA",
+          "HIP"
+        ]
+      },
+      "denoise_interactiveMode": {
+        "type": "enum",
+        "default": "Fast Preview",
+        "label": "Denoise Interactive Mode",
+        "options": [
+          "None",
+          "Fast Preview",
+          "Full"
+        ]
+      },
+      "useLegacyColorManagement": {
+        "type": "bool",
+        "default": false,
+        "label": "Use Legacy Color Management"
+      },
+      "bg_includeMode": {
+        "type": "bool",
+        "default": false,
+        "label": "BG Include Mode"
+      },
+      "lights_enviroAccurateSampling": {
+        "type": "bool",
+        "default": false,
+        "label": "Lights Enviro Accurate Sampling"
+      },
+      "medium_materialResolving": {
+        "type": "bool",
+        "default": true,
+        "label": "Medium Material Resolving"
+      },
+      "bloomGlare_postrender": {
+        "type": "bool",
+        "default": false,
+        "label": "Bloom Glare Postrender"
+      },
+      "colorMap_lightmixLmCount": {
+        "type": "int",
+        "default": 0,
+        "label": "Color Map Lightmix Lm Count"
+      },
+      "colorMap_lightmixLsCount": {
+        "type": "int",
+        "default": 0,
+        "label": "Color Map Lightmix Ls Count"
+      },
+      "interactive_resolutionWidth": {
+        "type": "int",
+        "default": 640,
+        "label": "Interactive Resolution Width",
+        "min": 64,
+        "max": 8192
+      },
+      "interactive_resolutionHeight": {
+        "type": "int",
+        "default": 480,
+        "label": "Interactive Resolution Height",
+        "min": 64,
+        "max": 8192
+      },
+      "interactive_resolutionLocked": {
+        "type": "bool",
+        "default": false,
+        "label": "Interactive Resolution Locked"
+      },
+      "caustics_volumeEnable": {
+        "type": "bool",
+        "default": true,
+        "label": "Caustics Volume Enable"
+      },
+      "caustics_maxSampleIntensity": {
+        "type": "float",
+        "default": 3.0,
+        "label": "Caustics Max Sample Intensity",
+        "min": 0.1,
+        "max": 100.0
+      },
+      "caustics_surfaceMultiplier": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Caustics Surface Multiplier",
+        "min": 0.0,
+        "max": 100.0
+      },
+      "caustics_volumeMultiplier": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Caustics Volume Multiplier",
+        "min": 0.0,
+        "max": 100.0
+      },
+      "upscaling_mode": {
+        "type": "enum",
+        "default": "None",
+        "label": "Upscaling Mode",
+        "options": [
+          "None",
+          "2x",
+          "4x"
+        ]
+      },
+      "upscaling_ir": {
+        "type": "bool",
+        "default": false,
+        "label": "Upscaling IR"
+      },
+      "autoAdjust_on": {
+        "type": "bool",
+        "default": false,
+        "label": "Auto Adjust On"
+      },
+      "autoAdjust_expOn": {
+        "type": "bool",
+        "default": true,
+        "label": "Auto Adjust Exp On"
+      },
+      "autoAdjust_wbOn": {
+        "type": "bool",
+        "default": true,
+        "label": "Auto Adjust Wb On"
+      },
+      "autoAdjust_updateAnim": {
+        "type": "bool",
+        "default": true,
+        "label": "Auto Adjust Update Anim"
+      },
+      "autoAdjust_expStrength": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Auto Adjust Exp Strength",
+        "min": 0.0,
+        "max": 2.0
+      },
+      "autoAdjust_wbStrength": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Auto Adjust Wb Strength",
+        "min": 0.0,
+        "max": 2.0
+      },
+      "mtlOverrideUnsupported_enabled": {
+        "type": "bool",
+        "default": false,
+        "label": "MTL Override Unsupported Enabled"
+      },
+      "irFastAnimationParsing": {
+        "type": "bool",
+        "default": true,
+        "label": "IR Fast Animation Parsing"
+      },
+      "shading_mapDifferentialFiltering": {
+        "type": "bool",
+        "default": true,
+        "label": "Shading Map Differential Filtering"
+      },
+      "outline_sampleCount": {
+        "type": "int",
+        "default": 10,
+        "label": "Outline Sample Count",
+        "min": 1,
+        "max": 100
+      },
+      "outline_sharpnessThreshold": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Outline Sharpness Threshold",
+        "min": 0.0,
+        "max": 10.0
+      },
+      "outline_globalEnable": {
+        "type": "bool",
+        "default": false,
+        "label": "Outline Global Enable"
+      },
+      "outline_globalMaterial": {
+        "type": "ref",
+        "default": null,
+        "label": "Outline Global Material"
+      },
+      "outline_includeMode": {
+        "type": "bool",
+        "default": false,
+        "label": "Outline Include Mode"
+      },
+      "bloomGlare_alpha": {
+        "type": "bool",
+        "default": true,
+        "label": "Bloom Glare Alpha"
+      },
+      "fireflyFilter_mode": {
+        "type": "enum",
+        "default": "None",
+        "label": "Firefly Filter Mode",
+        "options": [
+          "None",
+          "Enabled"
+        ]
+      },
+      "fireflyFilter_strength": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Firefly Filter Strength",
+        "min": 0.0,
+        "max": 10.0
+      },
+      "medium_cameraLegacyResolving": {
+        "type": "bool",
+        "default": false,
+        "label": "Medium Camera Legacy Resolving"
+      },
+      "devel_enable": {
+        "type": "bool",
+        "default": true,
+        "label": "Devel Enable"
+      },
+      "system_tooltips_enable": {
+        "type": "bool",
+        "default": true,
+        "label": "System Tooltips Enable"
+      },
+      "system_language": {
+        "type": "string",
+        "default": "English",
+        "label": "System Language"
+      },
+      "system_numThreads": {
+        "type": "int",
+        "default": 0,
+        "label": "System Num Threads",
+        "min": 0,
+        "max": 256
+      },
+      "system_vfbHistoryAutosave": {
+        "type": "bool",
+        "default": false,
+        "label": "System VFB History Autosave"
+      },
+      "system_vfbHistoryMaxSizeMb": {
+        "type": "int",
+        "default": 2048,
+        "label": "System VFB History Max Size MB",
+        "min": 0,
+        "max": 100000
+      },
+      "lockMax": {
+        "type": "bool",
+        "default": false,
+        "label": "Lock Max"
+      },
+      "mtlEditor_custom": {
+        "type": "bool",
+        "default": true,
+        "label": "MTL Editor Custom"
+      },
+      "mtlEditor_quality": {
+        "type": "float",
+        "default": 1.0,
+        "label": "MTL Editor Quality",
+        "min": 0.01,
+        "max": 10.0
+      },
+      "interactive_numThreads": {
+        "type": "int",
+        "default": -1,
+        "label": "Interactive Num Threads",
+        "min": -1,
+        "max": 256
+      },
+      "interactive_mtlEditor": {
+        "type": "bool",
+        "default": true,
+        "label": "Interactive MTL Editor"
+      },
+      "vfb_autosave_enable": {
+        "type": "bool",
+        "default": false,
+        "label": "VFB Autosave Enable"
+      },
+      "vfb_autosave_interval": {
+        "type": "float",
+        "default": 10.0,
+        "label": "VFB Autosave Interval",
+        "min": 1.0,
+        "max": 600.0
+      },
+      "vfb_autosave_countEnd": {
+        "type": "int",
+        "default": 3,
+        "label": "VFB Autosave Count End",
+        "min": 1,
+        "max": 100
+      },
+      "vfb_autosave_count": {
+        "type": "int",
+        "default": 5,
+        "label": "VFB Autosave Count",
+        "min": 1,
+        "max": 100
+      },
+      "vfb_autosave_filename": {
+        "type": "string",
+        "default": "",
+        "label": "VFB Autosave Filename"
+      },
+      "vfb_type": {
+        "type": "enum",
+        "default": "Corona VFB",
+        "label": "VFB Type",
+        "options": [
+          "Legacy",
+          "Corona VFB 2",
+          "Corona VFB 3",
+          "Corona VFB 4",
+          "Corona VFB"
+        ]
+      },
+      "system_vfbTitle": {
+        "type": "string",
+        "default": "Corona %bn | %rpx (%z) | Camera: %v | Frame %n",
+        "label": "System VFB Title"
+      },
+      "telemetry_enabled": {
+        "type": "bool",
+        "default": false,
+        "label": "Telemetry Enabled"
+      },
+      "progressive_interlacingLevel": {
+        "type": "int",
+        "default": 3,
+        "label": "Progressive Interlacing Level",
+        "min": 1,
+        "max": 8
+      },
+      "interactive_dissolveWithPrevious": {
+        "type": "bool",
+        "default": false,
+        "label": "Interactive Dissolve With Previous"
+      },
+      "defautRoughnessMode": {
+        "type": "enum",
+        "default": "Roughness",
+        "label": "Defaut Roughness Mode",
+        "options": [
+          "Roughness",
+          "Glossiness"
+        ]
+      },
+      "defautIorMode": {
+        "type": "enum",
+        "default": "IOR",
+        "label": "Defaut IOR Mode",
+        "options": [
+          "IOR",
+          "Specular Level"
+        ]
+      },
+      "ooct_dumpDirectory": {
+        "type": "string",
+        "default": "",
+        "label": "OOCT Dump Directory"
+      },
+      "ooct_cacheSizeEnable": {
+        "type": "bool",
+        "default": true,
+        "label": "OOCT Cache Size Enable"
+      },
+      "ooct_cacheSize": {
+        "type": "float",
+        "default": 100.0,
+        "label": "OOCT Cache Size",
+        "min": 1.0,
+        "max": 1000.0
+      },
+      "ooct_freeSpaceEnable": {
+        "type": "bool",
+        "default": true,
+        "label": "OOCT Free Space Enable"
+      },
+      "ooct_freeSpace": {
+        "type": "float",
+        "default": 10.0,
+        "label": "OOCT Free Space",
+        "min": 1.0,
+        "max": 1000.0
+      },
+      "mtlEditor_cache": {
+        "type": "bool",
+        "default": true,
+        "label": "MTL Editor Cache"
+      },
+      "defautNormalFilteringMode": {
+        "type": "enum",
+        "default": "High",
+        "label": "Defaut Normal Filtering Mode",
+        "options": [
+          "None",
+          "Standard",
+          "High"
+        ]
+      },
+      "colorpicker_spinboxValueType_ui": {
+        "type": "int",
+        "default": 0,
+        "label": "Colorpicker Spinbox Value Type Ui"
+      },
+      "colorpicker_spinboxValueType_scene": {
+        "type": "int",
+        "default": 0,
+        "label": "Colorpicker Spinbox Value Type Scene"
+      },
+      "colorpicker_colorSpaceUi": {
+        "type": "int",
+        "default": 0,
+        "label": "Colorpicker Color Space Ui"
+      },
+      "colorpicker_colorSpaceScene": {
+        "type": "int",
+        "default": 0,
+        "label": "Colorpicker Color Space Scene"
+      },
+      "system_vfbHistoryDir": {
+        "type": "string",
+        "default": "",
+        "label": "System VFB History Dir"
+      },
+      "system_vfbHistoryMaxFileCount": {
+        "type": "int",
+        "default": 0,
+        "label": "System VFB History Max File Count",
+        "min": 0,
+        "max": 10000
+      },
+      "system_vfbHistoryConfirmOverwrite": {
+        "type": "bool",
+        "default": true,
+        "label": "System VFB History Confirm Overwrite"
+      },
+      "vantage_address": {
+        "type": "string",
+        "default": "localhost:20701",
+        "label": "Vantage Address"
+      },
+      "telemetry_persEnabled": {
+        "type": "bool",
+        "default": false,
+        "label": "Telemetry Pers Enabled"
+      }
+    }
+  },
+  "tone_mapping": {
+    "category": "render",
+    "maxscript_target": "renderers.current.colorMap_pipeline (operator chain)",
+    "parameters": {
+      "AcesOtOperatorPlugin.colorMappingOperator_id": {
+        "type": "int",
+        "default": 478680391,
+        "label": "ACES OT Operator ID"
+      },
+      "AcesOtOperatorPlugin.colorMappingOperator_enabled": {
+        "type": "bool",
+        "default": true,
+        "label": "ACES OT Enabled"
+      },
+      "AcesOtOperatorPlugin.colorMappingOperator_opacity": {
+        "type": "float",
+        "default": 1.0,
+        "label": "ACES OT Opacity",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "SaturationOperatorPlugin.colorMappingOperator_id": {
+        "type": "int",
+        "default": -2013790199,
+        "label": "Saturation Operator ID"
+      },
+      "SaturationOperatorPlugin.colorMappingOperator_enabled": {
+        "type": "bool",
+        "default": true,
+        "label": "Saturation Enabled"
+      },
+      "SaturationOperatorPlugin.colorMappingOperator_saturation": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Saturation",
+        "min": -1.0,
+        "max": 1.0
+      },
+      "ContrastOperatorPlugin.colorMappingOperator_id": {
+        "type": "int",
+        "default": 1692206246,
+        "label": "Contrast Operator ID"
+      },
+      "ContrastOperatorPlugin.colorMappingOperator_enabled": {
+        "type": "bool",
+        "default": true,
+        "label": "Contrast Enabled"
+      },
+      "ContrastOperatorPlugin.colorMappingOperator_contrast": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Contrast",
+        "min": 0.0,
+        "max": 10.0
+      },
+      "GreenMagentaTintOperatorPlugin.colorMappingOperator_id": {
+        "type": "int",
+        "default": -707865534,
+        "label": "Green/Magenta Tint Operator ID"
+      },
+      "GreenMagentaTintOperatorPlugin.colorMappingOperator_enabled": {
+        "type": "bool",
+        "default": true,
+        "label": "Green/Magenta Tint Enabled"
+      },
+      "GreenMagentaTintOperatorPlugin.colorMappingOperator_greenMagentaTint": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Green/Magenta Tint",
+        "min": -1.0,
+        "max": 1.0
+      },
+      "WhiteBalanceImprovedOperatorPlugin.colorMappingOperator_id": {
+        "type": "int",
+        "default": 1105378679,
+        "label": "White Balance Operator ID"
+      },
+      "WhiteBalanceImprovedOperatorPlugin.colorMappingOperator_enabled": {
+        "type": "bool",
+        "default": true,
+        "label": "White Balance Enabled"
+      },
+      "WhiteBalanceImprovedOperatorPlugin.colorMappingOperator_colorTemperature": {
+        "type": "float",
+        "default": 6500.0,
+        "label": "White Balance Temperature",
+        "min": 1000.0,
+        "max": 40000.0
+      },
+      "SimpleExposureOperatorPlugin.colorMappingOperator_id": {
+        "type": "int",
+        "default": -1302580659,
+        "label": "Simple Exposure Operator ID"
+      },
+      "SimpleExposureOperatorPlugin.colorMappingOperator_enabled": {
+        "type": "bool",
+        "default": true,
+        "label": "Simple Exposure Enabled"
+      },
+      "SimpleExposureOperatorPlugin.colorMappingOperator_simpleExposure": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Simple Exposure",
+        "min": -10.0,
+        "max": 10.0
+      }
+    }
+  },
+  "physical_camera": {
+    "category": "camera",
+    "maxscript_target": "$CameraName (Physical class)",
+    "parameters": {
+      "targeted": {
+        "type": "bool",
+        "default": true,
+        "label": "Targeted"
+      },
+      "target_distance": {
+        "type": "float",
+        "default": 200.0,
+        "label": "Target Distance",
+        "min": 0.001,
+        "max": 1000000.0
+      },
+      "show_camera_cone": {
+        "type": "enum",
+        "default": "Off",
+        "label": "Show Camera Cone",
+        "options": [
+          "Off",
+          "Selected Only",
+          "Always"
+        ]
+      },
+      "horizon_on": {
+        "type": "bool",
+        "default": false,
+        "label": "Horizon On"
+      },
+      "show_focus_plane_in_cam_view": {
+        "type": "bool",
+        "default": false,
+        "label": "Show Focus Plane In Cam View"
+      },
+      "film_preset": {
+        "type": "string",
+        "default": "35mm",
+        "label": "Film Preset"
+      },
+      "film_width_mm": {
+        "type": "float",
+        "default": 36.0,
+        "label": "Film Width Mm",
+        "min": 1.0,
+        "max": 200.0
+      },
+      "focal_length_mm": {
+        "type": "float",
+        "default": 40.0,
+        "label": "Focal Length Mm",
+        "min": 1.0,
+        "max": 300.0
+      },
+      "specify_fov": {
+        "type": "bool",
+        "default": false,
+        "label": "Specify Fov"
+      },
+      "fov": {
+        "type": "float",
+        "default": 47.595,
+        "label": "Fov",
+        "min": 1.0,
+        "max": 175.0
+      },
+      "zoom_factor": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Zoom Factor",
+        "min": 0.01,
+        "max": 100.0
+      },
+      "f_number": {
+        "type": "float",
+        "default": 8.0,
+        "label": "F Number",
+        "min": 0.5,
+        "max": 128.0
+      },
+      "use_dof": {
+        "type": "bool",
+        "default": false,
+        "label": "Use DOF"
+      },
+      "specify_focus": {
+        "type": "enum",
+        "default": "Focal Distance",
+        "label": "Specify Focus",
+        "options": [
+          "Focal Distance",
+          "Camera Target",
+          "Pick Object"
+        ]
+      },
+      "focus_distance": {
+        "type": "float",
+        "default": 500.0,
+        "label": "Focus Distance",
+        "min": 0.001,
+        "max": 1000000.0
+      },
+      "lens_breathing_amount": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Lens Breathing Amount",
+        "min": 0.0,
+        "max": 2.0
+      },
+      "shutter_unit_type": {
+        "type": "enum",
+        "default": "1/x Seconds",
+        "label": "Shutter Unit Type",
+        "options": [
+          "Frames",
+          "Seconds",
+          "Degrees",
+          "1/x Seconds"
+        ]
+      },
+      "shutter_length_seconds": {
+        "type": "float",
+        "default": 0.001,
+        "label": "Shutter Length Seconds",
+        "min": 0.0001,
+        "max": 10.0
+      },
+      "shutter_offset_seconds": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Shutter Offset Seconds",
+        "min": -10.0,
+        "max": 10.0
+      },
+      "shutter_length_frames": {
+        "type": "float",
+        "default": 0.5,
+        "label": "Shutter Length Frames",
+        "min": 0.001,
+        "max": 10.0
+      },
+      "shutter_offset_frames": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Shutter Offset Frames",
+        "min": -10.0,
+        "max": 10.0
+      },
+      "shutter_offset_enabled": {
+        "type": "bool",
+        "default": false,
+        "label": "Shutter Offset Enabled"
+      },
+      "motion_blur_enabled": {
+        "type": "bool",
+        "default": false,
+        "label": "Motion Blur Enabled"
+      },
+      "exposure_gain_type": {
+        "type": "enum",
+        "default": "ISO/Shutter/F-Stop",
+        "label": "Exposure Gain Type",
+        "options": [
+          "EV",
+          "ISO/Shutter/F-Stop",
+          "Manual"
+        ]
+      },
+      "ISO": {
+        "type": "float",
+        "default": 6000.0,
+        "label": "Iso",
+        "min": 1.0,
+        "max": 100000.0
+      },
+      "exposure_value": {
+        "type": "float",
+        "default": 6.0,
+        "label": "Exposure Value",
+        "min": -10.0,
+        "max": 30.0
+      },
+      "white_balance_type": {
+        "type": "enum",
+        "default": "Custom Kelvin",
+        "label": "White Balance Type",
+        "options": [
+          "Custom Kelvin",
+          "Illuminant",
+          "Custom Color"
+        ]
+      },
+      "white_balance_illuminant": {
+        "type": "enum",
+        "default": "D50",
+        "label": "White Balance Illuminant",
+        "options": [
+          "D50",
+          "D55",
+          "D65",
+          "D75",
+          "A",
+          "B",
+          "C",
+          "E",
+          "F1-F12"
+        ]
+      },
+      "white_balance_kelvin": {
+        "type": "float",
+        "default": 6500.0,
+        "label": "White Balance Kelvin",
+        "min": 1000.0,
+        "max": 40000.0
+      },
+      "white_balance_custom": {
+        "type": "color",
+        "default": [
+          255,
+          255,
+          255
+        ],
+        "label": "White Balance Custom"
+      },
+      "vignetting_enabled": {
+        "type": "bool",
+        "default": false,
+        "label": "Vignetting Enabled"
+      },
+      "vignetting_amount": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Vignetting Amount",
+        "min": 0.0,
+        "max": 5.0
+      },
+      "bokeh_shape": {
+        "type": "enum",
+        "default": "Circular",
+        "label": "Bokeh Shape",
+        "options": [
+          "Circular",
+          "Bladed",
+          "Custom Texture"
+        ]
+      },
+      "bokeh_blades_number": {
+        "type": "int",
+        "default": 7,
+        "label": "Bokeh Blades Number",
+        "min": 3,
+        "max": 32
+      },
+      "pb_bokeh_blades_rotation_degrees": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Pb Bokeh Blades Rotation Degrees",
+        "min": 0.0,
+        "max": 360.0
+      },
+      "bokeh_texture": {
+        "type": "ref",
+        "default": null,
+        "label": "Bokeh Texture"
+      },
+      "bokeh_texture_affect_exposure": {
+        "type": "bool",
+        "default": true,
+        "label": "Bokeh Texture Affect Exposure"
+      },
+      "bokeh_optical_vignetting": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Bokeh Optical Vignetting",
+        "min": 0.0,
+        "max": 10.0
+      },
+      "bokeh_center_bias": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Bokeh Center Bias",
+        "min": -1.0,
+        "max": 1.0
+      },
+      "bokeh_anisotropy": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Bokeh Anisotropy",
+        "min": -1.0,
+        "max": 1.0
+      },
+      "horizontal_shift": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Horizontal Shift",
+        "min": -100.0,
+        "max": 100.0
+      },
+      "vertical_shift": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Vertical Shift",
+        "min": -100.0,
+        "max": 100.0
+      },
+      "horizontal_tilt_correction": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Horizontal Tilt Correction",
+        "min": -90.0,
+        "max": 90.0
+      },
+      "vertical_tilt_correction": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Vertical Tilt Correction",
+        "min": -90.0,
+        "max": 90.0
+      },
+      "auto_vertical_tilt_correction": {
+        "type": "bool",
+        "default": false,
+        "label": "Auto Vertical Tilt Correction"
+      },
+      "distortion_type": {
+        "type": "enum",
+        "default": "None",
+        "label": "Distortion Type",
+        "options": [
+          "None",
+          "Cubic",
+          "Texture"
+        ]
+      },
+      "distortion_cubic_amount": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Distortion Cubic Amount",
+        "min": -100.0,
+        "max": 100.0
+      },
+      "distortion_texture": {
+        "type": "ref",
+        "default": null,
+        "label": "Distortion Texture"
+      },
+      "clip_on": {
+        "type": "bool",
+        "default": false,
+        "label": "Clip On"
+      },
+      "clip_near": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Clip Near",
+        "min": 0.0,
+        "max": 1000000.0
+      },
+      "clip_far": {
+        "type": "float",
+        "default": 100000.0,
+        "label": "Clip Far",
+        "min": 0.0,
+        "max": 1000000.0
+      },
+      "environment_near": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Environment Near",
+        "min": 0.0,
+        "max": 1000000.0
+      },
+      "environment_far": {
+        "type": "float",
+        "default": 100000.0,
+        "label": "Environment Far",
+        "min": 0.0,
+        "max": 1000000.0
+      }
+    }
+  },
+  "free_camera": {
+    "category": "camera",
+    "maxscript_target": "$CameraName (Freecamera class)",
+    "parameters": {
+      "fov": {
+        "type": "float",
+        "default": 45.0,
+        "label": "Fov",
+        "min": 1.0,
+        "max": 175.0
+      },
+      "targetDistance": {
+        "type": "ref",
+        "default": null,
+        "label": "Target Distance"
+      },
+      "nearrange": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Nearrange",
+        "min": 0.0,
+        "max": 1000000.0
+      },
+      "farrange": {
+        "type": "float",
+        "default": 1000.0,
+        "label": "Farrange",
+        "min": 0.0,
+        "max": 1000000.0
+      },
+      "nearclip": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Nearclip",
+        "min": 0.001,
+        "max": 1000000.0
+      },
+      "near_clip": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Near Clip",
+        "min": 0.001,
+        "max": 1000000.0
+      },
+      "farclip": {
+        "type": "float",
+        "default": 1000.0,
+        "label": "Farclip",
+        "min": 0.001,
+        "max": 1000000.0
+      },
+      "far_clip": {
+        "type": "float",
+        "default": 1000.0,
+        "label": "Far Clip",
+        "min": 0.001,
+        "max": 1000000.0
+      },
+      "mpassEnabled": {
+        "type": "bool",
+        "default": false,
+        "label": "Mpass Enabled"
+      },
+      "mpassRenderPerPass": {
+        "type": "bool",
+        "default": false,
+        "label": "Mpass Render Per Pass"
+      },
+      "curFOV": {
+        "type": "float",
+        "default": 45.0,
+        "label": "Cur Fov",
+        "min": 1.0,
+        "max": 175.0
+      },
+      "fovType": {
+        "type": "enum",
+        "default": "Vertical",
+        "label": "Fov Type",
+        "options": [
+          "Horizontal",
+          "Vertical",
+          "Diagonal"
+        ]
+      },
+      "orthoProjection": {
+        "type": "bool",
+        "default": false,
+        "label": "Ortho Projection"
+      },
+      "showCone": {
+        "type": "bool",
+        "default": false,
+        "label": "Show Cone"
+      },
+      "showHorizon": {
+        "type": "bool",
+        "default": false,
+        "label": "Show Horizon"
+      },
+      "showRanges": {
+        "type": "bool",
+        "default": false,
+        "label": "Show Ranges"
+      },
+      "clipManually": {
+        "type": "bool",
+        "default": false,
+        "label": "Clip Manually"
+      }
+    }
+  },
+  "corona_camera_mod": {
+    "category": "camera",
+    "maxscript_target": "$CameraName.modifiers[#CoronaCameraMod]",
+    "parameters": {
+      "typeOverride": {
+        "type": "enum",
+        "default": "Cylindrical",
+        "label": "Type Override",
+        "options": [
+          "Perspective",
+          "Orthographic",
+          "Cylindrical",
+          "Spherical",
+          "Cube Map"
+        ]
+      },
+      "useTypeOverride": {
+        "type": "bool",
+        "default": false,
+        "label": "Use Type Override"
+      },
+      "fstop": {
+        "type": "float",
+        "default": 16.0,
+        "label": "Fstop",
+        "min": 0.5,
+        "max": 128.0
+      },
+      "sensorWidth": {
+        "type": "float",
+        "default": 36.0,
+        "label": "Sensor Width",
+        "min": 1.0,
+        "max": 200.0
+      },
+      "ISO": {
+        "type": "float",
+        "default": 100.0,
+        "label": "Iso",
+        "min": 1.0,
+        "max": 100000.0
+      },
+      "useOverrideFocus": {
+        "type": "bool",
+        "default": false,
+        "label": "Use Override Focus"
+      },
+      "overrideFocusDistance": {
+        "type": "float",
+        "default": 100.0,
+        "label": "Override Focus Distance",
+        "min": 0.001,
+        "max": 1000000.0
+      },
+      "shutterSpeed": {
+        "type": "float",
+        "default": 50.0,
+        "label": "Shutter Speed",
+        "min": 0.001,
+        "max": 10000.0
+      },
+      "cylinderHeight": {
+        "type": "float",
+        "default": 2.0,
+        "label": "Cylinder Height",
+        "min": 0.1,
+        "max": 100.0
+      },
+      "overrideDofOff": {
+        "type": "bool",
+        "default": false,
+        "label": "Override DOF Off"
+      },
+      "vrEnable": {
+        "type": "bool",
+        "default": false,
+        "label": "Vr Enable"
+      },
+      "vrEyeSeparation": {
+        "type": "float",
+        "default": 6.3,
+        "label": "Vr Eye Separation",
+        "min": 0.0,
+        "max": 100.0
+      },
+      "vrFrontOffset": {
+        "type": "float",
+        "default": 0.0,
+        "label": "Vr Front Offset",
+        "min": -100.0,
+        "max": 100.0
+      },
+      "vrConvergenceDistance": {
+        "type": "float",
+        "default": 100.0,
+        "label": "Vr Convergence Distance",
+        "min": 0.001,
+        "max": 1000000.0
+      },
+      "vrConvergenceDistanceSource": {
+        "type": "enum",
+        "default": "Camera Target",
+        "label": "Vr Convergence Distance Source",
+        "options": [
+          "Camera Target",
+          "Custom"
+        ]
+      },
+      "bloomGlareOverride": {
+        "type": "bool",
+        "default": false,
+        "label": "Bloom Glare Override"
+      },
+      "bloomGlareBloomIntensity": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Bloom Glare Bloom Intensity",
+        "min": 0.0,
+        "max": 100.0
+      },
+      "bloomGlareGlareIntensity": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Bloom Glare Glare Intensity",
+        "min": 0.0,
+        "max": 100.0
+      },
+      "bloomGlareColorIntensity": {
+        "type": "float",
+        "default": 0.3,
+        "label": "Bloom Glare Color Intensity",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "bloomGlareColorShift": {
+        "type": "float",
+        "default": 0.5,
+        "label": "Bloom Glare Color Shift",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "bloomGlareStreakCount": {
+        "type": "int",
+        "default": 3,
+        "label": "Bloom Glare Streak Count",
+        "min": 1,
+        "max": 20
+      },
+      "bloomGlareRotation": {
+        "type": "float",
+        "default": 15.0,
+        "label": "Bloom Glare Rotation",
+        "min": 0.0,
+        "max": 360.0
+      },
+      "bloomGlareStreakBlur": {
+        "type": "float",
+        "default": 0.2,
+        "label": "Bloom Glare Streak Blur",
+        "min": 0.0,
+        "max": 1.0
+      },
+      "bloomGlareThreshold": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Bloom Glare Threshold",
+        "min": 0.0,
+        "max": 100.0
+      },
+      "bloomGlareEnabled": {
+        "type": "bool",
+        "default": true,
+        "label": "Bloom Glare Enabled"
+      },
+      "overrideSharpening": {
+        "type": "bool",
+        "default": false,
+        "label": "Override Sharpening"
+      },
+      "sharpeningAmount": {
+        "type": "float",
+        "default": 1.0,
+        "label": "Sharpening Amount",
+        "min": 0.0,
+        "max": 10.0
+      },
+      "sharpeningRadius": {
+        "type": "float",
+        "default": 0.5,
+        "label": "Sharpening Radius",
+        "min": 0.1,
+        "max": 5.0
+      },
+      "blurringRadius": {
+        "type": "float",
+        "default": 1.33,
+        "label": "Blurring Radius",
+        "min": 0.1,
+        "max": 10.0
+      },
+      "sharpeningBlurringEnable": {
+        "type": "bool",
+        "default": true,
+        "label": "Sharpening Blurring Enable"
+      },
+      "colorMappingOverride": {
+        "type": "bool",
+        "default": false,
+        "label": "Color Mapping Override"
+      },
+      "colorMappingEnabled": {
+        "type": "bool",
+        "default": true,
+        "label": "Color Mapping Enabled"
+      }
+    }
+  },
+  "scene_output": {
+    "category": "scene",
+    "maxscript_target": "global render settings",
+    "parameters": {
+      "renderWidth": {
+        "type": "int",
+        "default": 1280,
+        "min": 1,
+        "max": 32768,
+        "label": "Render Width"
+      },
+      "renderHeight": {
+        "type": "int",
+        "default": 720,
+        "min": 1,
+        "max": 32768,
+        "label": "Render Height"
+      },
+      "renderPixelAspect": {
+        "type": "float",
+        "default": 1.0,
+        "min": 0.01,
+        "max": 10.0,
+        "label": "Pixel Aspect Ratio"
+      },
+      "rendOutputFilename": {
+        "type": "string",
+        "default": "",
+        "label": "Output Filename"
+      },
+      "rendSaveFile": {
+        "type": "bool",
+        "default": false,
+        "label": "Save Output File"
+      },
+      "rendTimeType": {
+        "type": "enum",
+        "default": "Single",
+        "options": [
+          "Single",
+          "Active Segment",
+          "Range",
+          "Frames"
+        ],
+        "label": "Time Output"
+      },
+      "animationRange_start": {
+        "type": "int",
+        "default": 0,
+        "min": -999999,
+        "max": 999999,
+        "label": "Start Frame"
+      },
+      "animationRange_end": {
+        "type": "int",
+        "default": 100,
+        "min": -999999,
+        "max": 999999,
+        "label": "End Frame"
+      },
+      "frameRate": {
+        "type": "int",
+        "default": 30,
+        "min": 1,
+        "max": 120,
+        "label": "Frame Rate"
+      },
+      "rendNThFrame": {
+        "type": "int",
+        "default": 1,
+        "min": 1,
+        "max": 1000,
+        "label": "Every Nth Frame"
+      },
+      "rendHidden": {
+        "type": "bool",
+        "default": false,
+        "label": "Render Hidden Geometry"
+      },
+      "rendForce2Side": {
+        "type": "bool",
+        "default": false,
+        "label": "Force Two-Sided"
+      },
+      "renderEffects": {
+        "type": "bool",
+        "default": true,
+        "label": "Render Atmospherics"
+      },
+      "renderDisplacements": {
+        "type": "bool",
+        "default": true,
+        "label": "Render Displacements"
+      },
+      "skipRenderedFrames": {
+        "type": "bool",
+        "default": false,
+        "label": "Skip Rendered Frames"
+      }
+    }
+  },
+  "environment": {
+    "category": "scene",
+    "maxscript_target": "environment globals (F8)",
+    "parameters": {
+      "backgroundColor": {
+        "type": "color",
+        "default": [
+          0,
+          0,
+          0
+        ],
+        "label": "Background Color"
+      },
+      "environmentMap": {
+        "type": "ref",
+        "default": null,
+        "label": "Environment Map"
+      },
+      "useEnvironmentMap": {
+        "type": "bool",
+        "default": false,
+        "label": "Use Environment Map"
+      },
+      "ambientColor": {
+        "type": "color",
+        "default": [
+          0,
+          0,
+          0
+        ],
+        "label": "Ambient Color"
+      },
+      "lightTintColor": {
+        "type": "color",
+        "default": [
+          255,
+          255,
+          255
+        ],
+        "label": "Light Tint Color"
+      },
+      "lightLevel": {
+        "type": "float",
+        "default": 1.0,
+        "min": 0.0,
+        "max": 10.0,
+        "label": "Light Level"
+      }
+    }
+  },
+  "color_management": {
+    "category": "scene",
+    "maxscript_target": "units / gamma globals",
+    "parameters": {
+      "fileInGamma": {
+        "type": "float",
+        "default": 2.2,
+        "min": 0.1,
+        "max": 5.0,
+        "label": "File Input Gamma"
+      },
+      "fileOutGamma": {
+        "type": "float",
+        "default": 2.2,
+        "min": 0.1,
+        "max": 5.0,
+        "label": "File Output Gamma"
+      },
+      "systemUnitScale": {
+        "type": "float",
+        "default": 1.0,
+        "min": 0.001,
+        "max": 1000.0,
+        "label": "System Unit Scale"
+      },
+      "systemUnitType": {
+        "type": "enum",
+        "default": "Centimeters",
+        "options": [
+          "Inches",
+          "Feet",
+          "Miles",
+          "Millimeters",
+          "Centimeters",
+          "Meters",
+          "Kilometers"
+        ],
+        "label": "System Unit Type"
+      },
+      "displayUnitType": {
+        "type": "enum",
+        "default": "Metric",
+        "options": [
+          "Generic",
+          "Metric",
+          "US Standard",
+          "Custom"
+        ],
+        "label": "Display Unit Type"
+      }
+    }
+  }
+}
