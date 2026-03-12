@@ -346,14 +346,17 @@ export function NodeFlowView() {
     setAutoSuggest(null);
   }, [scheduleSave, selectNode, storeAddEdge]);
 
-  // Auto-layout using dagre
+  // Auto-layout using dagre — read nodes/edges from store directly
+  // to avoid infinite loop (applyNodeLayout updates flowNodes which would re-trigger)
   useEffect(() => {
-    if (!autoLayoutNonce || flowNodes.length === 0) return;
+    if (!autoLayoutNonce) return;
+    const { flowNodes: nodes, flowEdges: edges } = useFlowStore.getState();
+    if (nodes.length === 0) return;
 
-    const nextPositions = getAutoLayoutPositions(flowNodes, storeEdges);
+    const nextPositions = getAutoLayoutPositions(nodes, edges);
     applyNodeLayout(nextPositions);
     reactFlowInstance.fitView({ duration: 280, padding: 0.15 });
-  }, [applyNodeLayout, autoLayoutNonce, flowNodes, reactFlowInstance, storeEdges]);
+  }, [applyNodeLayout, autoLayoutNonce, reactFlowInstance]);
 
   useEffect(() => {
     if (!fitViewNonce || flowNodes.length === 0) return;
