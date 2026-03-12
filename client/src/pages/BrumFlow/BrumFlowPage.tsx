@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react'
 import {
   Workflow, List, PanelRightOpen, PanelRightClose, Loader2,
   Plus, LayoutGrid, MonitorDot, BarChart3, RefreshCcw, Route, ScanSearch,
-  AlertCircle, Wifi, WifiOff, Camera, Trash2,
+  AlertCircle, Wifi, WifiOff, Camera, Trash2, Terminal,
 } from 'lucide-react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useUiStore } from '@/stores/uiStore';
@@ -11,6 +11,7 @@ import { NodeFlowView } from '@/components/flow/NodeFlowView';
 import { MatrixView } from '@/components/matrix/MatrixView';
 import { DetailPanel } from '@/components/detail/DetailPanel';
 import { OutputPreviewPanel } from '@/components/output/OutputPreviewPanel';
+import { MaxDebugPanel } from '@/components/debug/MaxDebugPanel';
 import { getSocket } from '@/lib/socket';
 
 export default function BrumFlowPage() {
@@ -47,6 +48,8 @@ export default function BrumFlowPage() {
   const [socketConnected, setSocketConnected] = useState(false);
   const [isImportingCameras, setIsImportingCameras] = useState(false);
   const [selectedReplacementCameraId, setSelectedReplacementCameraId] = useState('');
+  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
+  const maxDebugLogCount = useFlowStore((s) => s.maxDebugLog.length);
 
   useEffect(() => {
     setSelectedReplacementCameraId(cameraMatchPrompt?.availableCameras[0]?.id ?? '');
@@ -233,6 +236,23 @@ export default function BrumFlowPage() {
                 Max {maxSyncState.status}
               </div>
             )}
+            <Tooltip text="Max debug log">
+              <button
+                onClick={() => setDebugPanelOpen(!debugPanelOpen)}
+                className={`relative p-1.5 rounded transition ${
+                  debugPanelOpen
+                    ? 'bg-amber-500/15 text-amber-400'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-surface-300'
+                }`}
+              >
+                <Terminal className="w-3.5 h-3.5" />
+                {maxDebugLogCount > 0 && !debugPanelOpen && (
+                  <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-amber-500 text-[8px] text-background flex items-center justify-center font-bold">
+                    {maxDebugLogCount > 9 ? '9+' : maxDebugLogCount}
+                  </span>
+                )}
+              </button>
+            </Tooltip>
             <div className="flex rounded-md border border-border overflow-hidden">
               <button
                 onClick={() => setViewMode('flow')}
@@ -294,9 +314,18 @@ export default function BrumFlowPage() {
               {viewMode === 'flow' ? <NodeFlowView /> : <MatrixView />}
             </ReactFlowProvider>
           </div>
-          {outputPanelOpen && (
-            <div className="h-[280px] shrink-0 border-t border-border overflow-y-auto">
-              <OutputPreviewPanel />
+          {(outputPanelOpen || debugPanelOpen) && (
+            <div className="h-[280px] shrink-0 border-t border-border flex">
+              {outputPanelOpen && (
+                <div className={`overflow-y-auto ${debugPanelOpen ? 'flex-1 min-w-0' : 'w-full'}`}>
+                  <OutputPreviewPanel />
+                </div>
+              )}
+              {debugPanelOpen && (
+                <div className={`overflow-y-auto ${outputPanelOpen ? 'w-[420px] border-l border-border' : 'w-full'}`}>
+                  <MaxDebugPanel onClose={() => setDebugPanelOpen(false)} />
+                </div>
+              )}
             </div>
           )}
         </div>

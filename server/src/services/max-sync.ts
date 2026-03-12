@@ -9,6 +9,19 @@ import { executeMaxMcpScript } from './max-mcp-client.js';
 import { emitSocketEvent } from './socket-events.js';
 import { dbQuery } from './supabase.js';
 
+function emitMaxLog(entry: {
+  level: 'info' | 'error' | 'warn';
+  summary: string;
+  detail?: string;
+}) {
+  emitSocketEvent('max:log', {
+    id: `mlog_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    timestamp: new Date().toISOString(),
+    direction: 'system' as const,
+    ...entry,
+  });
+}
+
 interface QueueSceneSyncInput {
   sceneId: string;
   reason: string;
@@ -180,8 +193,10 @@ export async function queueScenesUsingNodeConfig(configId: string, reason: strin
 }
 
 export async function syncSceneToMaxNow(input: SyncSceneNowInput): Promise<MaxSyncState | null> {
+  emitMaxLog({ level: 'info', summary: `sync:start — ${input.reason}`, detail: `scene=${input.sceneId} force=${!!input.force} pathKey=${input.preferredPathKey ?? '(auto)'}` });
   const context = await loadSceneSyncContext(input.sceneId);
   if (!context.scene) {
+    emitMaxLog({ level: 'error', summary: `sync:abort — scene not found`, detail: input.sceneId });
     throw new Error(`Scene ${input.sceneId} not found`);
   }
 
@@ -237,6 +252,7 @@ export async function syncSceneToMaxNow(input: SyncSceneNowInput): Promise<MaxSy
   const needsApply = input.force || !sameCamera || Object.keys(changedConfig).length > 0;
 
   if (!needsApply) {
+    emitMaxLog({ level: 'info', summary: `sync:skip — no changes`, detail: `camera=${target.path.cameraName} pathKey=${target.path.pathKey}` });
     const successState = await upsertMaxSyncState(input.sceneId, {
       status: 'success',
       active_path_key: target.path.pathKey,
@@ -247,6 +263,12 @@ export async function syncSceneToMaxNow(input: SyncSceneNowInput): Promise<MaxSy
     emitSyncState(successState);
     return successState;
   }
+
+  emitMaxLog({
+    level: 'info',
+    summary: `sync:apply — ${target.path.cameraName} (${Object.keys(changedConfig).length} props)`,
+    detail: `pathKey=${target.path.pathKey}\nchangedKeys: ${Object.keys(changedConfig).join(', ') || '(full config)'}`,
+  });
 
   const maxscript = buildApplyResolvedConfigScript({
     cameraName: target.path.cameraName,
@@ -259,6 +281,7 @@ export async function syncSceneToMaxNow(input: SyncSceneNowInput): Promise<MaxSy
       ? context.scene.instance_host.trim()
       : undefined;
     const response = await executeMaxMcpScript(maxscript, 30_000, { host: maxHost });
+    emitMaxLog({ level: 'info', summary: `sync:success — ${target.path.cameraName}`, detail: response.result?.slice(0, 500) || undefined });
     const successState = await upsertMaxSyncState(input.sceneId, {
       status: 'success',
       active_path_key: target.path.pathKey,
@@ -273,6 +296,7 @@ export async function syncSceneToMaxNow(input: SyncSceneNowInput): Promise<MaxSy
     return successState;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown Max sync error';
+    emitMaxLog({ level: 'error', summary: `sync:error — ${message.slice(0, 100)}`, detail: message });
     const missingCameraName = getMissingCameraName(message);
     const failureState = await upsertMaxSyncState(input.sceneId, {
       status: 'error',

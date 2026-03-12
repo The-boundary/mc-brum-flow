@@ -2,6 +2,7 @@ import net from 'node:net';
 import { randomUUID } from 'node:crypto';
 
 import { config } from '../config.js';
+import { emitSocketEvent } from './socket-events.js';
 
 export type MaxMcpCommandType = 'maxscript' | 'ping' | 'python';
 
@@ -18,6 +19,22 @@ interface MaxMcpConnectionOptions {
   port?: number;
 }
 
+function emitMaxLog(entry: {
+  level: 'info' | 'error' | 'warn';
+  direction: 'outgoing' | 'incoming' | 'system';
+  summary: string;
+  detail?: string;
+  durationMs?: number;
+  host?: string;
+  port?: number;
+}) {
+  emitSocketEvent('max:log', {
+    id: `mlog_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    timestamp: new Date().toISOString(),
+    ...entry,
+  });
+}
+
 export async function sendMaxMcpCommand(
   command: string,
   type: MaxMcpCommandType = 'maxscript',
@@ -32,6 +49,15 @@ export async function sendMaxMcpCommand(
     type,
     requestId,
     protocolVersion: 2,
+  });
+
+  emitMaxLog({
+    level: 'info',
+    direction: 'outgoing',
+    summary: `${type} → ${host}:${port}`,
+    detail: command || undefined,
+    host,
+    port,
   });
 
   return new Promise<MaxMcpResponse>((resolve, reject) => {
@@ -51,6 +77,20 @@ export async function sendMaxMcpCommand(
       fn();
     };
 
+    const rejectWithLog = (error: Error) => {
+      const elapsed = Math.round(performance.now() - startedAt);
+      emitMaxLog({
+        level: 'error',
+        direction: 'incoming',
+        summary: `${type} ✗ ${error.message.slice(0, 120)}`,
+        detail: error.message,
+        durationMs: elapsed,
+        host,
+        port,
+      });
+      reject(error);
+    };
+
     socket.setTimeout(timeoutMs);
 
     socket.on('connect', () => {
@@ -64,9 +104,10 @@ export async function sendMaxMcpCommand(
       }
 
       finish(() => {
+        const elapsed = Math.round(performance.now() - startedAt);
         const normalized = stripBom(responseData).trim();
         if (!normalized) {
-          reject(new Error('Empty response from 3ds Max MCP listener'));
+          rejectWithLog(new Error('Empty response from 3ds Max MCP listener'));
           return;
         }
 
@@ -74,12 +115,12 @@ export async function sendMaxMcpCommand(
         try {
           parsed = JSON.parse(normalized) as MaxMcpResponse;
         } catch (error) {
-          reject(new Error(`Invalid JSON from 3ds Max MCP listener: ${String(error)}`));
+          rejectWithLog(new Error(`Invalid JSON from 3ds Max MCP listener: ${String(error)}`));
           return;
         }
 
         if (parsed.requestId && parsed.requestId !== requestId) {
-          reject(new Error(`Mismatched requestId from 3ds Max MCP listener: expected ${requestId}, got ${parsed.requestId}`));
+          rejectWithLog(new Error(`Mismatched requestId from 3ds Max MCP listener: expected ${requestId}, got ${parsed.requestId}`));
           return;
         }
 
@@ -90,9 +131,19 @@ export async function sendMaxMcpCommand(
         };
 
         if (!parsed.success) {
-          reject(new Error(parsed.error || 'Unknown 3ds Max MCP listener error'));
+          rejectWithLog(new Error(parsed.error || 'Unknown 3ds Max MCP listener error'));
           return;
         }
+
+        emitMaxLog({
+          level: 'info',
+          direction: 'incoming',
+          summary: `${type} ✓ ${elapsed}ms`,
+          detail: parsed.result || undefined,
+          durationMs: elapsed,
+          host,
+          port,
+        });
 
         resolve(parsed);
       });
@@ -100,13 +151,13 @@ export async function sendMaxMcpCommand(
 
     socket.on('timeout', () => {
       finish(() => {
-        reject(new Error(`3ds Max MCP listener timed out after ${timeoutMs}ms (${host}:${port})`));
+        rejectWithLog(new Error(`3ds Max MCP listener timed out after ${timeoutMs}ms (${host}:${port})`));
       });
     });
 
     socket.on('error', (error) => {
       finish(() => {
-        reject(new Error(`3ds Max MCP connection failed: ${error.message}`));
+        rejectWithLog(new Error(`3ds Max MCP connection failed: ${error.message}`));
       });
     });
 
@@ -116,7 +167,7 @@ export async function sendMaxMcpCommand(
       }
 
       finish(() => {
-        reject(new Error('3ds Max MCP listener closed the connection without a response'));
+        rejectWithLog(new Error('3ds Max MCP listener closed the connection without a response'));
       });
     });
   });

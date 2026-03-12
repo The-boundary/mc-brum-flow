@@ -35,6 +35,18 @@ export interface CameraMatchPrompt {
   availableCameras: Camera[];
 }
 
+export interface MaxDebugLogEntry {
+  id: string;
+  timestamp: string;
+  level: 'info' | 'error' | 'warn';
+  direction: 'outgoing' | 'incoming' | 'system';
+  summary: string;
+  detail?: string;
+  durationMs?: number;
+  host?: string;
+  port?: number;
+}
+
 interface FlowState {
   // Data
   scenes: Scene[];
@@ -60,6 +72,9 @@ interface FlowState {
 
   // Sync activity log
   syncLog: SyncLogEntry[];
+
+  // Max debug log
+  maxDebugLog: MaxDebugLogEntry[];
 
   // Loading
   loading: boolean;
@@ -94,6 +109,7 @@ interface FlowState {
   pushToMax: (pathKey?: string, pathIndex?: number) => Promise<boolean>;
   submitRender: (pathIndices: number[]) => Promise<boolean>;
   addSyncLog: (entry: Omit<SyncLogEntry, 'id' | 'timestamp'>) => void;
+  clearMaxDebugLog: () => void;
   dismissCameraMatchPrompt: () => void;
 }
 
@@ -235,6 +251,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   maxHealth: null,
   cameraMatchPrompt: null,
   syncLog: [],
+  maxDebugLog: [],
   loading: true,
   error: null,
 
@@ -705,6 +722,10 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
       }
     });
 
+    socket.on('max:log', (entry: MaxDebugLogEntry) => {
+      set((s) => ({ maxDebugLog: [entry, ...s.maxDebugLog].slice(0, 200) }));
+    });
+
     socket.on('max-sync:updated', (row: MaxSyncState) => {
       const { activeSceneId } = get();
       if (row.scene_id === activeSceneId) {
@@ -908,5 +929,6 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     set((s) => ({ syncLog: [log, ...s.syncLog].slice(0, 50) }));
   },
 
+  clearMaxDebugLog: () => set({ maxDebugLog: [] }),
   dismissCameraMatchPrompt: () => set({ cameraMatchPrompt: null }),
 }));
