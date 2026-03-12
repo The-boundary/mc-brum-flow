@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react'
 import {
   Workflow, List, PanelRightOpen, PanelRightClose, Loader2,
   Plus, LayoutGrid, MonitorDot, BarChart3, RefreshCcw, Route, ScanSearch,
-  AlertCircle, Wifi, WifiOff, Camera, Trash2, Terminal,
+  AlertCircle, Wifi, WifiOff, Camera, Trash2, Terminal, X, Info, CheckCircle2,
 } from 'lucide-react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useUiStore } from '@/stores/uiStore';
@@ -44,6 +44,9 @@ export default function BrumFlowPage() {
     pushToMax,
     importCamerasFromMax,
   } = useFlowStore();
+
+  const toast = useFlowStore((s) => s.toast);
+  const dismissToast = useFlowStore((s) => s.dismissToast);
 
   const [socketConnected, setSocketConnected] = useState(false);
   const [isImportingCameras, setIsImportingCameras] = useState(false);
@@ -335,6 +338,24 @@ export default function BrumFlowPage() {
       {detailPanelOpen && (
         <div className="w-[380px] shrink-0 border-l border-border overflow-y-auto">
           <DetailPanel />
+        </div>
+      )}
+
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-lg border px-4 py-2.5 shadow-xl text-xs ${
+          toast.level === 'error'
+            ? 'border-red-500/40 bg-red-950/90 text-red-200'
+            : toast.level === 'success'
+              ? 'border-emerald-500/40 bg-emerald-950/90 text-emerald-200'
+              : 'border-border bg-surface-100/95 text-foreground'
+        }`}>
+          {toast.level === 'error' ? <AlertCircle className="w-3.5 h-3.5 shrink-0" /> :
+           toast.level === 'success' ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> :
+           <Info className="w-3.5 h-3.5 shrink-0" />}
+          <span>{toast.message}</span>
+          <button onClick={dismissToast} className="ml-1 p-0.5 rounded hover:bg-white/10 transition">
+            <X className="w-3 h-3" />
+          </button>
         </div>
       )}
 

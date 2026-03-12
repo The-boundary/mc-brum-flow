@@ -76,6 +76,9 @@ interface FlowState {
   // Max debug log
   maxDebugLog: MaxDebugLogEntry[];
 
+  // Toast notification
+  toast: { message: string; level: 'info' | 'success' | 'error' } | null;
+
   // Loading
   loading: boolean;
   error: string | null;
@@ -109,6 +112,8 @@ interface FlowState {
   pushToMax: (pathKey?: string, pathIndex?: number) => Promise<boolean>;
   submitRender: (pathIndices: number[]) => Promise<boolean>;
   addSyncLog: (entry: Omit<SyncLogEntry, 'id' | 'timestamp'>) => void;
+  showToast: (message: string, level?: 'info' | 'success' | 'error') => void;
+  dismissToast: () => void;
   clearMaxDebugLog: () => void;
   dismissCameraMatchPrompt: () => void;
 }
@@ -252,6 +257,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   cameraMatchPrompt: null,
   syncLog: [],
   maxDebugLog: [],
+  toast: null,
   loading: true,
   error: null,
 
@@ -817,6 +823,15 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
         status: 'success',
         reason: `cameras-imported:${result.imported}${createdNodes > 0 ? `:nodes-${createdNodes}` : ''}`,
       });
+
+      if (createdNodes > 0) {
+        get().showToast(`Imported ${createdNodes} camera${createdNodes > 1 ? 's' : ''} from 3ds Max`, 'success');
+      } else if (result.imported > 0) {
+        get().showToast(`${result.imported} camera${result.imported > 1 ? 's' : ''} already in graph — nothing new to add`, 'info');
+      } else {
+        get().showToast('No cameras found in the 3ds Max scene', 'info');
+      }
+
       return result.imported;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to import cameras';
@@ -826,6 +841,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
         reason: 'cameras-imported',
         error: message,
       });
+      get().showToast(message, 'error');
       return 0;
     }
   },
@@ -929,6 +945,14 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     set((s) => ({ syncLog: [log, ...s.syncLog].slice(0, 50) }));
   },
 
+  showToast: (message, level = 'info') => {
+    set({ toast: { message, level } });
+    setTimeout(() => {
+      const current = get().toast;
+      if (current?.message === message) set({ toast: null });
+    }, 4000);
+  },
+  dismissToast: () => set({ toast: null }),
   clearMaxDebugLog: () => set({ maxDebugLog: [] }),
   dismissCameraMatchPrompt: () => set({ cameraMatchPrompt: null }),
 }));
