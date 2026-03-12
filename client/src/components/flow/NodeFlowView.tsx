@@ -192,7 +192,8 @@ export function NodeFlowView() {
   }, [storeAddEdge, scheduleSave]);
 
   const onConnectStart: OnConnectStart = useCallback((_event, params) => {
-    if (!params.nodeId || params.handleType !== 'source') {
+    console.log('[connect-debug] onConnectStart', { nodeId: params.nodeId, handleType: params.handleType, handleId: params.handleId });
+    if (!params.nodeId) {
       pendingConnectionRef.current = null;
       return;
     }
@@ -224,23 +225,34 @@ export function NodeFlowView() {
     const pendingConnection = pendingConnectionRef.current;
     pendingConnectionRef.current = null;
 
-    if (!pendingConnection) return;
-    if (connectionState?.isValid || connectionState?.toNode || connectionState?.toHandle) return;
+    console.log('[connect-debug] onConnectEnd', {
+      hasPending: !!pendingConnection,
+      sourceNodeId: pendingConnection?.sourceNodeId,
+      isValid: connectionState?.isValid,
+      toNode: connectionState?.toNode?.id,
+      toHandle: connectionState?.toHandle?.id,
+      targetClass: (event.target as Element)?.className,
+    });
+
+    if (!pendingConnection) { console.log('[connect-debug] BAIL: no pendingConnection'); return; }
+    if (connectionState?.isValid || connectionState?.toNode || connectionState?.toHandle) { console.log('[connect-debug] BAIL: connection was valid/had target'); return; }
 
     const target = event.target as Element | null;
     const droppedOnInteractiveElement = Boolean(
-      target?.closest('.react-flow__node, .react-flow__handle, .react-flow__controls, .react-flow__minimap, .react-flow__edge, .react-flow__connection')
+      target?.closest('.react-flow__node, .react-flow__handle, .react-flow__controls, .react-flow__minimap')
     );
 
-    if (droppedOnInteractiveElement) return;
+    if (droppedOnInteractiveElement) { console.log('[connect-debug] BAIL: dropped on interactive element'); return; }
 
     const validTypes = getSuggestedNextNodeTypes(flowNodes, storeEdges, pendingConnection.sourceNodeId);
-    if (validTypes.length === 0) return;
+    console.log('[connect-debug] validTypes for', pendingConnection.sourceNodeId, ':', validTypes);
+    if (validTypes.length === 0) { console.log('[connect-debug] BAIL: no valid types'); return; }
 
     const clientX = 'clientX' in event ? event.clientX : event.touches?.[0]?.clientX ?? 0;
     const clientY = 'clientY' in event ? event.clientY : event.touches?.[0]?.clientY ?? 0;
     const flowPos = reactFlowInstance.screenToFlowPosition({ x: clientX, y: clientY });
 
+    console.log('[connect-debug] SHOWING auto-suggest at', { clientX, clientY, validTypes });
     setAutoSuggest({
       x: clientX + 8,
       y: clientY + 8,
