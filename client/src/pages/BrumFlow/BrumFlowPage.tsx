@@ -13,7 +13,7 @@ import { OutputPreviewPanel } from '@/components/output/OutputPreviewPanel';
 
 export default function BrumFlowPage() {
   const { viewMode, setViewMode, detailPanelOpen, toggleDetailPanel, outputPanelOpen, toggleOutputPanel } = useUiStore();
-  const { loading, error, scenes, activeSceneId, setActiveScene, loadAll, initSocket, pathCount } = useFlowStore();
+  const { loading, error, scenes, activeSceneId, setActiveScene, loadAll, initSocket, pathCount, maxSyncState } = useFlowStore();
 
   useEffect(() => {
     loadAll();
@@ -91,6 +91,20 @@ export default function BrumFlowPage() {
           <div className="flex items-center gap-2">
             {loading && (
               <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+            )}
+            {maxSyncState && (
+              <div
+                className={`rounded border px-2 py-1 text-[10px] ${
+                  maxSyncState.status === 'error'
+                    ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                    : maxSyncState.status === 'syncing' || maxSyncState.status === 'queued'
+                      ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                      : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                }`}
+                title={maxSyncState.last_error ?? maxSyncState.last_reason}
+              >
+                Max {maxSyncState.status}
+              </div>
             )}
             <div className="flex rounded-md border border-border overflow-hidden">
               <button

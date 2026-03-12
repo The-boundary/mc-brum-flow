@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import * as api from '@/lib/api';
 import { getSocket } from '@/lib/socket';
-import type { Scene, Camera, StudioDefault, NodeConfig, FlowNode, FlowEdge, NodeType } from '@shared/types';
+import type { Scene, Camera, StudioDefault, NodeConfig, FlowNode, FlowEdge, NodeType, MaxSyncState } from '@shared/types';
 import { isValidConnection } from '@shared/types';
 
 export interface ResolvedPath {
@@ -32,6 +32,7 @@ interface FlowState {
   // Output preview
   resolvedPaths: ResolvedPath[];
   pathCount: number;
+  maxSyncState: MaxSyncState | null;
 
   // Loading
   loading: boolean;
@@ -63,15 +64,27 @@ interface FlowState {
 
 let nextNodeId = 1;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let persistNeedsResolve = false;
 
 function genNodeId(): string {
   return `node_${Date.now()}_${nextNodeId++}`;
 }
 
-function scheduleStoreSave(saveGraph: () => Promise<void>) {
+function scheduleStoreSave(
+  saveGraph: () => Promise<void>,
+  resolvePaths: () => Promise<void>,
+  needsResolve = false,
+) {
+  persistNeedsResolve = persistNeedsResolve || needsResolve;
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
-    void saveGraph();
+    const shouldResolve = persistNeedsResolve;
+    persistNeedsResolve = false;
+    void saveGraph().then(async () => {
+      if (shouldResolve) {
+        await resolvePaths();
+      }
+    });
   }, 400);
 }
 
@@ -87,6 +100,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   selectedNodeId: null,
   resolvedPaths: [],
   pathCount: 0,
+  maxSyncState: null,
   loading: true,
   error: null,
 
@@ -104,11 +118,13 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
       let flowNodes: FlowNode[] = [];
       let flowEdges: FlowEdge[] = [];
       let viewport = { x: 0, y: 0, zoom: 1 };
+      let maxSyncState: MaxSyncState | null = null;
 
       if (activeId) {
-        const [cams, flowConfig] = await Promise.all([
+        const [cams, flowConfig, syncState] = await Promise.all([
           api.fetchCameras(activeId),
           api.fetchFlowConfig(activeId),
+          api.fetchMaxSyncState(activeId),
         ]);
         cameras = cams;
         if (flowConfig) {
@@ -116,6 +132,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
           flowEdges = flowConfig.edges || [];
           viewport = flowConfig.viewport || viewport;
         }
+        maxSyncState = syncState;
       }
 
       set({
@@ -127,6 +144,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
         flowNodes,
         flowEdges,
         viewport,
+        maxSyncState,
         loading: false,
       });
 
@@ -139,15 +157,17 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   setActiveScene: async (id: string) => {
     set({ activeSceneId: id, selectedNodeId: null, loading: true });
     try {
-      const [cams, flowConfig] = await Promise.all([
+      const [cams, flowConfig, maxSyncState] = await Promise.all([
         api.fetchCameras(id),
         api.fetchFlowConfig(id),
+        api.fetchMaxSyncState(id),
       ]);
       set({
         cameras: cams,
         flowNodes: flowConfig?.nodes || [],
         flowEdges: flowConfig?.edges || [],
         viewport: flowConfig?.viewport || { x: 0, y: 0, zoom: 1 },
+        maxSyncState,
         loading: false,
       });
       get().resolvePaths();
@@ -183,6 +203,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
       ...(type === 'group' && { hide_previous: false }),
     };
     set((s) => ({ flowNodes: [...s.flowNodes, node], selectedNodeId: id }));
+    scheduleStoreSave(get().saveGraph, get().resolvePaths, true);
   },
 
   removeNode: (id) => {
@@ -191,6 +212,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
       flowEdges: s.flowEdges.filter((e) => e.source !== id && e.target !== id),
       selectedNodeId: s.selectedNodeId === id ? null : s.selectedNodeId,
     }));
+    scheduleStoreSave(get().saveGraph, get().resolvePaths, true);
   },
 
   addEdge: (source, target) => {
@@ -208,22 +230,25 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
       target,
     };
     set((s) => ({ flowEdges: [...s.flowEdges, edge] }));
+    scheduleStoreSave(get().saveGraph, get().resolvePaths, true);
     return true;
   },
 
   removeEdge: (id) => {
     set((s) => ({ flowEdges: s.flowEdges.filter((e) => e.id !== id) }));
+    scheduleStoreSave(get().saveGraph, get().resolvePaths, true);
   },
 
   updateNodePosition: (id, position) => {
     set((s) => ({
       flowNodes: s.flowNodes.map((n) => (n.id === id ? { ...n, position } : n)),
     }));
+    scheduleStoreSave(get().saveGraph, get().resolvePaths);
   },
 
   updateViewport: (viewport) => {
     set({ viewport });
-    scheduleStoreSave(get().saveGraph);
+    scheduleStoreSave(get().saveGraph, get().resolvePaths);
   },
 
   assignNodeConfig: async (nodeId, configId) => {
@@ -246,7 +271,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     set((s) => ({
       flowNodes: s.flowNodes.map((n) => (n.id === id ? { ...n, label } : n)),
     }));
-    scheduleStoreSave(get().saveGraph);
+    scheduleStoreSave(get().saveGraph, get().resolvePaths, true);
   },
 
   toggleHidePrevious: (id) => {
@@ -255,7 +280,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
         n.id === id && n.type === 'group' ? { ...n, hide_previous: !n.hide_previous } : n
       ),
     }));
-    scheduleStoreSave(get().saveGraph);
+    scheduleStoreSave(get().saveGraph, get().resolvePaths, true);
   },
 
   setResolvedPathEnabled: async (pathKey, outputNodeId, enabled) => {
@@ -477,6 +502,13 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
           viewport: row.viewport || { x: 0, y: 0, zoom: 1 },
         });
         get().resolvePaths();
+      }
+    });
+
+    socket.on('max-sync:updated', (row: MaxSyncState) => {
+      const { activeSceneId } = get();
+      if (row.scene_id === activeSceneId) {
+        set({ maxSyncState: row });
       }
     });
   },

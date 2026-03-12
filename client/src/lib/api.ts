@@ -49,6 +49,10 @@ export const fetchFlowConfig = (sceneId: string) =>
 export const saveFlowConfig = (data: any) =>
   request<any>('/flow-config', { method: 'POST', body: JSON.stringify(data) });
 
+// Max Sync
+export const fetchMaxSyncState = (sceneId: string) =>
+  request<any | null>(`/max-sync-state?scene_id=${sceneId}`);
+
 // Path Resolution
 export const resolvePaths = (sceneId: string) =>
   request<{ paths: any[]; count: number }>('/resolve-paths', { method: 'POST', body: JSON.stringify({ scene_id: sceneId }) });

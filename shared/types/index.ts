@@ -79,6 +79,21 @@ export interface FlowConfig {
   updated_at: string;
 }
 
+export type MaxSyncStatus = 'idle' | 'queued' | 'syncing' | 'success' | 'error';
+
+export interface MaxSyncState {
+  scene_id: string;
+  status: MaxSyncStatus;
+  active_path_key: string | null;
+  active_camera_name: string | null;
+  last_synced_config: Record<string, unknown>;
+  last_request_id: string | null;
+  last_reason: string;
+  last_error: string | null;
+  last_synced_at: string | null;
+  updated_at: string;
+}
+
 // ── Pipeline order (strict, all required) ──
 
 export const PIPELINE_ORDER: NodeType[] = [

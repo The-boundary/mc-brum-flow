@@ -1,11 +1,59 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { dbQuery } from '../services/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
-import { pushConfigToMax } from '../services/tcp-bridge.js';
 import { submitDeadlineJob } from '../services/deadline.js';
 import { resolveFlowPaths } from '../services/flowResolver.js';
+import {
+  getMaxSyncState,
+  queueAllScenesSync,
+  queueSceneSync,
+  queueScenesUsingNodeConfig,
+  syncSceneToMaxNow,
+} from '../services/max-sync.js';
+import { logger } from '../utils/logger.js';
 
 const router = Router();
+
+function triggerBackgroundSync(job: Promise<unknown>, context: Record<string, unknown>) {
+  void job.catch((error) => {
+    logger.error({ err: error, ...context }, 'Background Max sync scheduling failed');
+  });
+}
+
+async function loadResolvedSceneData(sceneId: string) {
+  const [flowResult, configsResult, camerasResult, defaultsResult, sceneResult] = await Promise.all([
+    dbQuery('SELECT * FROM flow_configs WHERE scene_id = $1', [sceneId]),
+    dbQuery('SELECT * FROM node_configs'),
+    dbQuery('SELECT * FROM cameras WHERE scene_id = $1', [sceneId]),
+    dbQuery('SELECT * FROM studio_defaults'),
+    dbQuery('SELECT * FROM scenes WHERE id = $1', [sceneId]),
+  ]);
+
+  const flow = flowResult.rows[0] ?? null;
+  const scene = sceneResult.rows[0] ?? null;
+
+  const configs: Record<string, any> = {};
+  for (const row of configsResult.rows) configs[row.id] = row;
+
+  const cameras: Record<string, any> = {};
+  for (const row of camerasResult.rows) cameras[row.id] = row;
+
+  const defaults: Record<string, any> = {};
+  for (const row of defaultsResult.rows) defaults[row.category] = row.settings;
+
+  const paths = flow
+    ? resolveFlowPaths({ flow, configs, cameras, defaults })
+    : [];
+
+  return {
+    scene,
+    flow,
+    configs,
+    cameras,
+    defaults,
+    paths,
+  };
+}
 
 // ── Health (no auth) ──
 
@@ -66,6 +114,10 @@ router.put('/studio-defaults/:category', async (req: Request, res: Response, nex
     );
     if (rows.length === 0) return res.status(404).json({ success: false, error: 'Category not found' });
     req.app.get('io')?.emit('studio-defaults:updated', rows[0]);
+    triggerBackgroundSync(
+      queueAllScenesSync(`studio-defaults:${req.params.category}`),
+      { category: req.params.category },
+    );
     res.json({ success: true, data: rows[0] });
   } catch (e) { next(e); }
 });
@@ -110,6 +162,10 @@ router.put('/node-configs/:id', async (req: Request, res: Response, next: NextFu
     );
     if (rows.length === 0) return res.status(404).json({ success: false, error: 'Not found' });
     req.app.get('io')?.emit('node-config:updated', rows[0]);
+    triggerBackgroundSync(
+      queueScenesUsingNodeConfig(req.params.id, `node-config:${req.params.id}:updated`),
+      { nodeConfigId: req.params.id },
+    );
     res.json({ success: true, data: rows[0] });
   } catch (e) { next(e); }
 });
@@ -118,6 +174,10 @@ router.delete('/node-configs/:id', async (req: Request, res: Response, next: Nex
   try {
     await dbQuery('DELETE FROM node_configs WHERE id = $1', [req.params.id]);
     req.app.get('io')?.emit('node-config:deleted', { id: req.params.id });
+    triggerBackgroundSync(
+      queueScenesUsingNodeConfig(req.params.id, `node-config:${req.params.id}:deleted`),
+      { nodeConfigId: req.params.id },
+    );
     res.json({ success: true });
   } catch (e) { next(e); }
 });
@@ -145,15 +205,41 @@ router.post('/cameras', async (req: Request, res: Response, next: NextFunction) 
       [scene_id, name, max_handle, max_class]
     );
     req.app.get('io')?.emit('camera:upserted', rows[0]);
+    triggerBackgroundSync(
+      queueSceneSync({ sceneId: scene_id, reason: `camera:${rows[0]?.id ?? 'unknown'}:upserted` }),
+      { sceneId: scene_id },
+    );
     res.status(201).json({ success: true, data: rows[0] });
   } catch (e) { next(e); }
 });
 
 router.delete('/cameras/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const lookup = await dbQuery<{ scene_id: string }>('SELECT scene_id FROM cameras WHERE id = $1', [req.params.id]);
     await dbQuery('DELETE FROM cameras WHERE id = $1', [req.params.id]);
     req.app.get('io')?.emit('camera:deleted', { id: req.params.id });
+    const sceneId = lookup.rows[0]?.scene_id;
+    if (sceneId) {
+      triggerBackgroundSync(
+        queueSceneSync({ sceneId, reason: `camera:${req.params.id}:deleted` }),
+        { sceneId, cameraId: req.params.id },
+      );
+    }
     res.json({ success: true });
+  } catch (e) { next(e); }
+});
+
+// ── Max Sync ──
+
+router.get('/max-sync-state', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sceneId = typeof req.query.scene_id === 'string' ? req.query.scene_id : '';
+    if (!sceneId) {
+      return res.status(400).json({ success: false, error: 'scene_id required' });
+    }
+
+    const state = await getMaxSyncState(sceneId);
+    res.json({ success: true, data: state });
   } catch (e) { next(e); }
 });
 
@@ -179,6 +265,10 @@ router.post('/flow-config', async (req: Request, res: Response, next: NextFuncti
       [scene_id, JSON.stringify(nodes), JSON.stringify(edges), JSON.stringify(viewport)]
     );
     req.app.get('io')?.emit('flow-config:updated', rows[0]);
+    triggerBackgroundSync(
+      queueSceneSync({ sceneId: scene_id, reason: 'flow-config:updated' }),
+      { sceneId: scene_id },
+    );
     res.json({ success: true, data: rows[0] });
   } catch (e) { next(e); }
 });
@@ -190,26 +280,8 @@ router.post('/resolve-paths', async (req: Request, res: Response, next: NextFunc
     const { scene_id } = req.body;
     if (!scene_id) return res.status(400).json({ success: false, error: 'scene_id required' });
 
-    const [flowResult, configsResult, camerasResult, defaultsResult] = await Promise.all([
-      dbQuery('SELECT * FROM flow_configs WHERE scene_id = $1', [scene_id]),
-      dbQuery('SELECT * FROM node_configs'),
-      dbQuery('SELECT * FROM cameras WHERE scene_id = $1', [scene_id]),
-      dbQuery('SELECT * FROM studio_defaults'),
-    ]);
-
-    const flow = flowResult.rows[0];
+    const { flow, paths } = await loadResolvedSceneData(scene_id);
     if (!flow) return res.json({ success: true, data: { paths: [], count: 0 } });
-
-    const configs: Record<string, any> = {};
-    for (const c of configsResult.rows) configs[c.id] = c;
-
-    const cameras: Record<string, any> = {};
-    for (const c of camerasResult.rows) cameras[c.id] = c;
-
-    const defaults: Record<string, any> = {};
-    for (const d of defaultsResult.rows) defaults[d.category] = d.settings;
-
-    const paths = resolveFlowPaths({ flow, configs, cameras, defaults });
 
     res.json({ success: true, data: { paths, count: paths.length } });
   } catch (e) { next(e); }
@@ -219,46 +291,27 @@ router.post('/resolve-paths', async (req: Request, res: Response, next: NextFunc
 
 router.post('/push-to-max', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { scene_id, path_index } = req.body;
-    if (!scene_id || path_index === undefined) {
-      return res.status(400).json({ success: false, error: 'scene_id and path_index required' });
+    const { scene_id, path_index, path_key } = req.body;
+    if (!scene_id || (path_index === undefined && !path_key)) {
+      return res.status(400).json({ success: false, error: 'scene_id and path_index or path_key required' });
     }
 
-    // Resolve paths server-side
-    const [flowResult, configsResult, camerasResult, defaultsResult, sceneResult] = await Promise.all([
-      dbQuery('SELECT * FROM flow_configs WHERE scene_id = $1', [scene_id]),
-      dbQuery('SELECT * FROM node_configs'),
-      dbQuery('SELECT * FROM cameras WHERE scene_id = $1', [scene_id]),
-      dbQuery('SELECT * FROM studio_defaults'),
-      dbQuery('SELECT * FROM scenes WHERE id = $1', [scene_id]),
-    ]);
-
-    const flow = flowResult.rows[0];
-    if (!flow) return res.status(404).json({ success: false, error: 'No flow config found' });
-
-    const configs: Record<string, any> = {};
-    for (const c of configsResult.rows) configs[c.id] = c;
-    const cameras: Record<string, any> = {};
-    for (const c of camerasResult.rows) cameras[c.id] = c;
-    const defaults: Record<string, any> = {};
-    for (const d of defaultsResult.rows) defaults[d.category] = d.settings;
-
-    const paths = resolveFlowPaths({ flow, configs, cameras, defaults });
-
-    if (path_index >= paths.length) {
+    const { paths } = await loadResolvedSceneData(scene_id);
+    if (path_index !== undefined && (path_index < 0 || path_index >= paths.length)) {
       return res.status(400).json({ success: false, error: `Path index ${path_index} out of range (${paths.length} paths)` });
     }
-
-    const targetPath = paths[path_index];
-    if (!targetPath.enabled) {
-      return res.status(400).json({ success: false, error: 'Selected path is disabled' });
+    if (path_key && !paths.some((path) => path.pathKey === path_key)) {
+      return res.status(400).json({ success: false, error: `Path key ${path_key} not found` });
     }
-    const result = await pushConfigToMax({
-      cameraName: targetPath.cameraName,
-      resolvedConfig: targetPath.resolvedConfig,
-    });
 
-    res.json({ success: true, data: { message: result } });
+    const syncState = await syncSceneToMaxNow({
+      sceneId: scene_id,
+      reason: 'push-to-max',
+      preferredPathIndex: path_index,
+      preferredPathKey: path_key ?? null,
+      force: true,
+    });
+    res.json({ success: true, data: syncState });
   } catch (e) { next(e); }
 });
 
@@ -271,27 +324,8 @@ router.post('/submit-render', async (req: Request, res: Response, next: NextFunc
       return res.status(400).json({ success: false, error: 'scene_id and path_indices[] required' });
     }
 
-    // Resolve paths
-    const [flowResult, configsResult, camerasResult, defaultsResult, sceneResult] = await Promise.all([
-      dbQuery('SELECT * FROM flow_configs WHERE scene_id = $1', [scene_id]),
-      dbQuery('SELECT * FROM node_configs'),
-      dbQuery('SELECT * FROM cameras WHERE scene_id = $1', [scene_id]),
-      dbQuery('SELECT * FROM studio_defaults'),
-      dbQuery('SELECT * FROM scenes WHERE id = $1', [scene_id]),
-    ]);
-
-    const flow = flowResult.rows[0];
-    const scene = sceneResult.rows[0];
+    const { flow, scene, paths } = await loadResolvedSceneData(scene_id);
     if (!flow || !scene) return res.status(404).json({ success: false, error: 'Scene or flow not found' });
-
-    const configs: Record<string, any> = {};
-    for (const c of configsResult.rows) configs[c.id] = c;
-    const cameras: Record<string, any> = {};
-    for (const c of camerasResult.rows) cameras[c.id] = c;
-    const defaults: Record<string, any> = {};
-    for (const d of defaultsResult.rows) defaults[d.category] = d.settings;
-
-    const paths = resolveFlowPaths({ flow, configs, cameras, defaults });
 
     const jobIds: { jobId: string }[] = [];
     for (const idx of path_indices) {

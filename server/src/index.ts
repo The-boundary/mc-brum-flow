@@ -11,6 +11,7 @@ import { logger } from './utils/logger.js';
 import routes from './routes/index.js';
 import authRouter from './routes/auth.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
+import { registerSocketServer } from './services/socket-events.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -24,6 +25,7 @@ const io = new SocketServer(server, {
 
 // Make io available to routes
 app.set('io', io);
+registerSocketServer(io);
 
 app.set('trust proxy', true);
 
