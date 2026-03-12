@@ -1,14 +1,14 @@
 import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
 import {
   Workflow, List, PanelRightOpen, PanelRightClose, Loader2,
-  Plus, LayoutGrid, MonitorDot, BarChart3, RefreshCcw, Route, ScanSearch,
+  Plus, Minus, LayoutGrid, MonitorDot, BarChart3, RefreshCcw, Route, ScanSearch,
   AlertCircle, Wifi, WifiOff, Camera, Trash2, Terminal, X, Info, CheckCircle2,
   Link2, Unlink2, GitFork,
 } from 'lucide-react';
-import { ReactFlowProvider } from '@xyflow/react';
+import { MiniMap, ReactFlowProvider } from '@xyflow/react';
 import { useUiStore } from '@/stores/uiStore';
 import { useFlowStore } from '@/stores/flowStore';
-import { NodeFlowView } from '@/components/flow/NodeFlowView';
+import { getMiniMapNodeColor, NodeFlowView } from '@/components/flow/NodeFlowView';
 import { MatrixView } from '@/components/matrix/MatrixView';
 import { DetailPanel } from '@/components/detail/DetailPanel';
 import { OutputPreviewPanel } from '@/components/output/OutputPreviewPanel';
@@ -25,6 +25,8 @@ export default function BrumFlowPage() {
     toggleOutputPanel,
     requestAutoLayout,
     requestFitView,
+    requestZoomIn,
+    requestZoomOut,
     linkSameType,
     toggleLinkSameType,
     moveParents,
@@ -136,6 +138,7 @@ export default function BrumFlowPage() {
   }
 
   return (
+    <ReactFlowProvider>
     <div className="flex h-screen overflow-hidden">
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0">
@@ -183,15 +186,27 @@ export default function BrumFlowPage() {
 
           <div className="flex items-center gap-1 rounded-lg border border-border bg-surface-200/60 px-1 py-0.5">
             <ToolbarButton
-              icon={LayoutGrid}
-              tooltip="Auto layout graph"
-              onClick={requestAutoLayout}
+              icon={Plus}
+              tooltip="Zoom in"
+              onClick={requestZoomIn}
+              disabled={viewMode !== 'flow' || loading}
+            />
+            <ToolbarButton
+              icon={Minus}
+              tooltip="Zoom out"
+              onClick={requestZoomOut}
               disabled={viewMode !== 'flow' || loading}
             />
             <ToolbarButton
               icon={ScanSearch}
               tooltip="Fit graph to view"
               onClick={requestFitView}
+              disabled={viewMode !== 'flow' || loading}
+            />
+            <ToolbarButton
+              icon={LayoutGrid}
+              tooltip="Auto layout graph"
+              onClick={requestAutoLayout}
               disabled={viewMode !== 'flow' || loading}
             />
             <div className="mx-1 h-4 w-px bg-border" />
@@ -341,9 +356,7 @@ export default function BrumFlowPage() {
         {/* View content */}
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="flex-1 min-h-0">
-            <ReactFlowProvider>
-              {viewMode === 'flow' ? <NodeFlowView /> : <MatrixView />}
-            </ReactFlowProvider>
+            {viewMode === 'flow' ? <NodeFlowView /> : <MatrixView />}
           </div>
           {(outputPanelOpen || debugPanelOpen) && (
             <div className="h-[280px] shrink-0 border-t border-border flex">
@@ -365,6 +378,15 @@ export default function BrumFlowPage() {
         {/* Detail panel */}
       {detailPanelOpen && (
         <div className="w-[380px] shrink-0 border-l border-border overflow-y-auto">
+          {viewMode === 'flow' && (
+            <div className="relative h-[160px] border-b border-border bg-surface-100">
+              <MiniMap
+                className="!static !w-full !h-full !bg-surface-100 !border-none !rounded-none !m-0"
+                nodeColor={(node) => getMiniMapNodeColor(node.type)}
+                maskColor="rgba(0,0,0,0.5)"
+              />
+            </div>
+          )}
           <DetailPanel />
         </div>
       )}
@@ -445,6 +467,7 @@ export default function BrumFlowPage() {
         </div>
       )}
     </div>
+    </ReactFlowProvider>
   );
 }
 

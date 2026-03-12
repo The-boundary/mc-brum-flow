@@ -12,6 +12,8 @@ interface UiState {
   presetLibraryOpen: boolean;
   autoLayoutNonce: number;
   fitViewNonce: number;
+  zoomInNonce: number;
+  zoomOutNonce: number;
   setViewMode: (mode: ViewMode) => void;
   toggleDetailPanel: () => void;
   setDetailPanelWidth: (width: number) => void;
@@ -19,6 +21,8 @@ interface UiState {
   togglePresetLibrary: () => void;
   requestAutoLayout: () => void;
   requestFitView: () => void;
+  requestZoomIn: () => void;
+  requestZoomOut: () => void;
 
   // Drag mode toggles
   linkSameType: boolean;
@@ -43,6 +47,8 @@ export const useUiStore = create<UiState>()(
       presetLibraryOpen: false,
       autoLayoutNonce: 0,
       fitViewNonce: 0,
+      zoomInNonce: 0,
+      zoomOutNonce: 0,
       linkSameType: false,
       moveParents: false,
       sidebarCollapsed: false,
@@ -55,6 +61,8 @@ export const useUiStore = create<UiState>()(
       togglePresetLibrary: () => set((s) => ({ presetLibraryOpen: !s.presetLibraryOpen })),
       requestAutoLayout: () => set((s) => ({ autoLayoutNonce: s.autoLayoutNonce + 1 })),
       requestFitView: () => set((s) => ({ fitViewNonce: s.fitViewNonce + 1 })),
+      requestZoomIn: () => set((s) => ({ zoomInNonce: s.zoomInNonce + 1 })),
+      requestZoomOut: () => set((s) => ({ zoomOutNonce: s.zoomOutNonce + 1 })),
       toggleLinkSameType: () => set((s) => ({ linkSameType: !s.linkSameType })),
       toggleMoveParents: () => set((s) => ({ moveParents: !s.moveParents })),
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),

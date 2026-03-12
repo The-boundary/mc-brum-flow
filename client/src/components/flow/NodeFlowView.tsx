@@ -2,9 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   BackgroundVariant,
-  Controls,
   getSmoothStepPath,
-  MiniMap,
   ReactFlow,
   SelectionMode,
   type Connection,
@@ -133,7 +131,7 @@ function getHiddenPreviousNodeIds(flowNodes: FlowNode[], flowEdges: FlowEdge[]) 
   return hiddenNodeIds;
 }
 
-function getMiniMapNodeColor(type?: string | null) {
+export function getMiniMapNodeColor(type?: string | null) {
   switch (type) {
     case 'camera':
       return '#34d399';
@@ -208,6 +206,8 @@ function BranchConnectionLine({
 export function NodeFlowView() {
   const autoLayoutNonce = useUiStore((state) => state.autoLayoutNonce);
   const fitViewNonce = useUiStore((state) => state.fitViewNonce);
+  const zoomInNonce = useUiStore((state) => state.zoomInNonce);
+  const zoomOutNonce = useUiStore((state) => state.zoomOutNonce);
   const {
     activeSceneId,
     flowNodes,
@@ -252,9 +252,10 @@ export function NodeFlowView() {
     [storeEdges, hiddenPreviousNodeIds]
   );
 
+  // Use the FULL graph for semantics so hidden cameras still count for edge coloring
   const semantics = useMemo(
-    () => getFlowSemantics(visibleFlowNodes, visibleStoreEdges, selectedNodeId),
-    [visibleFlowNodes, visibleStoreEdges, selectedNodeId]
+    () => getFlowSemantics(flowNodes, storeEdges, selectedNodeId),
+    [flowNodes, storeEdges, selectedNodeId]
   );
   const handleLayout = useMemo(
     () => getFlowHandleLayout(visibleFlowNodes, visibleStoreEdges),
@@ -729,6 +730,16 @@ export function NodeFlowView() {
     fitSelectionOrGraph();
   }, [fitSelectionOrGraph, fitViewNonce]);
 
+  useEffect(() => {
+    if (!zoomInNonce) return;
+    void reactFlowInstance.zoomIn({ duration: 200 });
+  }, [zoomInNonce, reactFlowInstance]);
+
+  useEffect(() => {
+    if (!zoomOutNonce) return;
+    void reactFlowInstance.zoomOut({ duration: 200 });
+  }, [zoomOutNonce, reactFlowInstance]);
+
   const allNodeTypes = Object.entries(NODE_TYPE_META);
 
   return (
@@ -760,13 +771,6 @@ export function NodeFlowView() {
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(190 12% 20%)" />
-        <Controls className="!bg-surface-200 !border-border !rounded-lg [&>button]:!bg-surface-300 [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-surface-400" />
-
-        <MiniMap
-          className="!bg-surface-100 !border-border !rounded-lg"
-          nodeColor={(node) => getMiniMapNodeColor(node.type)}
-          maskColor="rgba(0,0,0,0.5)"
-        />
       </ReactFlow>
 
       {contextMenu && (
