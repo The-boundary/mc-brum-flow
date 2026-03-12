@@ -381,7 +381,8 @@ export default function BrumFlowPage() {
           {viewMode === 'flow' && (
             <div className="relative h-[160px] border-b border-border overflow-hidden">
               <MiniMap
-                className="!static !w-full !h-full !bg-surface-100 !border-0 !rounded-none !m-0 !p-0 !shadow-none [&>svg]:!border-0"
+                className="!static !bg-surface-100 !border-0 !rounded-none !m-0 !p-0 !shadow-none"
+                style={{ width: '100%', height: '100%' }}
                 nodeColor={(node) => getMiniMapNodeColor(node.type)}
                 maskColor="rgba(0,0,0,0.4)"
               />
