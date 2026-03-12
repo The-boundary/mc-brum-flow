@@ -50,6 +50,8 @@ RUN rm -f .npmrc
 COPY --from=server-builder /app/server/dist ./server/dist
 COPY --from=server-builder /app/shared ./shared
 COPY --from=client-builder /app/client/dist ./client/dist
+# Copy commit hash marker to bust BuildKit GHA cache for production stage
+COPY --from=client-builder /app/.git-commit-hash ./.git-commit-hash
 RUN chown -R nodejs:nodejs /app
 USER nodejs
 ENV NODE_ENV=production
