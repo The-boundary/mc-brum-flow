@@ -71,6 +71,7 @@ interface FlowState {
 
   // Selection
   selectedNodeId: string | null;
+  selectedNodeIds: string[];
 
   // Output preview
   resolvedPaths: ResolvedPath[];
@@ -99,8 +100,10 @@ interface FlowState {
   loadAll: () => Promise<void>;
   setActiveScene: (id: string) => Promise<void>;
   selectNode: (id: string | null) => void;
+  setSelectedNodeIds: (ids: string[]) => void;
   addNode: (type: NodeType, position: { x: number; y: number }, configId?: string, cameraId?: string) => void;
   removeNode: (id: string) => void;
+  removeNodes: (ids: string[]) => void;
   addEdge: (source: string, target: string, sourceHandle?: string | null, targetHandle?: string | null) => boolean;
   removeEdge: (id: string) => void;
   updateNodePosition: (id: string, position: { x: number; y: number }) => void;
@@ -262,6 +265,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   flowEdges: [],
   viewport: { x: 0, y: 0, zoom: 1 },
   selectedNodeId: null,
+  selectedNodeIds: [],
   resolvedPaths: [],
   pathCount: 0,
   maxSyncState: null,
@@ -362,6 +366,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   },
 
   selectNode: (id) => set({ selectedNodeId: id }),
+  setSelectedNodeIds: (ids) => set({ selectedNodeIds: ids }),
 
   addNode: (type, position, configId, cameraId) => {
     const id = genNodeId();
@@ -400,23 +405,32 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     scheduleStoreSave(get().saveGraph, get().resolvePaths, true);
   },
 
-  addEdge: (source, target, sourceHandle, targetHandle) => {
+  removeNodes: (ids) => {
+    const idSet = new Set(ids);
+    set((s) => ({
+      flowNodes: s.flowNodes.filter((n) => !idSet.has(n.id)),
+      flowEdges: s.flowEdges.filter((e) => !idSet.has(e.source) && !idSet.has(e.target)),
+      selectedNodeId: s.selectedNodeId && idSet.has(s.selectedNodeId) ? null : s.selectedNodeId,
+      selectedNodeIds: s.selectedNodeIds.filter((id) => !idSet.has(id)),
+    }));
+    scheduleStoreSave(get().saveGraph, get().resolvePaths, true);
+  },
+
+  addEdge: (source, target, _sourceHandle, _targetHandle) => {
     const { flowNodes, flowEdges } = get();
     const sourceNode = flowNodes.find((n) => n.id === source);
     const targetNode = flowNodes.find((n) => n.id === target);
     if (!sourceNode || !targetNode) return false;
     if (!isValidFlowConnection(source, target, flowNodes, flowEdges)) return false;
-    // Prevent duplicate edges
-    if (flowEdges.some((e) => e.source === source && e.target === target && e.source_handle === (sourceHandle ?? undefined) && e.target_handle === (targetHandle ?? undefined))) {
+    // Prevent duplicate edges (same source → target pair)
+    if (flowEdges.some((e) => e.source === source && e.target === target)) {
       return false;
     }
 
     const edge: FlowEdge = {
-      id: `edge_${source}_${sourceHandle ?? 'auto'}_${target}_${targetHandle ?? 'auto'}`,
+      id: `edge_${source}_${target}`,
       source,
       target,
-      ...(sourceHandle ? { source_handle: sourceHandle } : {}),
-      ...(targetHandle ? { target_handle: targetHandle } : {}),
     };
     set((s) => ({ flowEdges: [...s.flowEdges, edge] }));
     scheduleStoreSave(get().saveGraph, get().resolvePaths, true);

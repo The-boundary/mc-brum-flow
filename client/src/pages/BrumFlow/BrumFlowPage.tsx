@@ -44,6 +44,8 @@ export default function BrumFlowPage() {
     resolvePaths,
     selectedNodeId,
     removeNode,
+    removeNodes,
+    selectedNodeIds,
     assignNodeCamera,
     dismissCameraMatchPrompt,
     pushToMax,
@@ -208,9 +210,15 @@ export default function BrumFlowPage() {
             />
             <ToolbarButton
               icon={Trash2}
-              tooltip={selectedNodeId ? 'Delete selected node' : 'No node selected'}
-              onClick={() => selectedNodeId && removeNode(selectedNodeId)}
-              disabled={!selectedNodeId || loading}
+              tooltip={selectedNodeIds.length > 1 ? `Delete ${selectedNodeIds.length} selected nodes` : selectedNodeId ? 'Delete selected node' : 'No node selected'}
+              onClick={() => {
+                if (selectedNodeIds.length > 0) {
+                  removeNodes(selectedNodeIds);
+                } else if (selectedNodeId) {
+                  removeNode(selectedNodeId);
+                }
+              }}
+              disabled={(!selectedNodeId && selectedNodeIds.length === 0) || loading}
             />
             <ToolbarButton
               icon={RefreshCcw}
