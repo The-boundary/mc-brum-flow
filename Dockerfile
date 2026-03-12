@@ -16,7 +16,8 @@ COPY shared ./shared
 COPY tsconfig.base.json ./
 ARG GIT_COMMIT_HASH
 ENV GIT_COMMIT_HASH=$GIT_COMMIT_HASH
-RUN cd client && npx vite build
+# Write hash to file so BuildKit detects a content change and busts the cache
+RUN echo "$GIT_COMMIT_HASH" > /app/.git-commit-hash && cd client && npx vite build
 
 # Stage 2: Build server
 FROM node:20-alpine AS server-builder
