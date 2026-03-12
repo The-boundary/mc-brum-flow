@@ -1,4 +1,4 @@
-import type { FlowEdge, FlowNode, NodeType } from '@shared/types';
+import { pipelineIndex, type FlowEdge, type FlowNode, type NodeType } from '@shared/types';
 
 export interface NodeHandleLayout {
   inputHandleIds: string[];
@@ -188,4 +188,85 @@ export function getSuggestedNextNodeTypes(
 
   const nextStageType = NEXT_STAGE_BY_TYPE[sourceNode.type];
   return nextStageType ? [nextStageType] : [];
+}
+
+export function getAutoLayoutPositions(flowNodes: FlowNode[], flowEdges: FlowEdge[]) {
+  const positions: Record<string, { x: number; y: number }> = {};
+  const nodesById = new Map(flowNodes.map((node) => [node.id, node]));
+  const incomingEdges = buildIncomingEdgeMap(flowEdges);
+  const columns = new Map<number, FlowNode[]>();
+
+  for (const node of flowNodes) {
+    const column = getLayoutColumn(node, nodesById, incomingEdges);
+    const bucket = columns.get(column) ?? [];
+    bucket.push(node);
+    columns.set(column, bucket);
+  }
+
+  const sortedColumns = [...columns.entries()].sort((a, b) => a[0] - b[0]);
+  for (const [column, nodes] of sortedColumns) {
+    nodes
+      .sort((a, b) => {
+        if (a.position.y !== b.position.y) return a.position.y - b.position.y;
+        if (a.position.x !== b.position.x) return a.position.x - b.position.x;
+        return a.id.localeCompare(b.id);
+      })
+      .forEach((node, index) => {
+        positions[node.id] = {
+          x: 80 + column * 250,
+          y: 80 + index * 150,
+        };
+      });
+  }
+
+  return positions;
+}
+
+function getLayoutColumn(
+  node: FlowNode,
+  nodesById: Map<string, FlowNode>,
+  incomingEdges: Map<string, FlowEdge[]>
+) {
+  if (node.type === 'override') {
+    const upstreamColumn = findUpstreamColumn(node.id, nodesById, incomingEdges);
+    return upstreamColumn !== null ? upstreamColumn + 1 : 4;
+  }
+
+  if (node.type === 'group') {
+    const upstreamColumn = findUpstreamColumn(node.id, nodesById, incomingEdges);
+    return upstreamColumn !== null ? Math.max(1, upstreamColumn + 1) : 1;
+  }
+
+  const pipelineStage = pipelineIndex(node.type);
+  return pipelineStage >= 0 ? pipelineStage : 0;
+}
+
+function findUpstreamColumn(
+  nodeId: string,
+  nodesById: Map<string, FlowNode>,
+  incomingEdges: Map<string, FlowEdge[]>
+): number | null {
+  const queue = [...(incomingEdges.get(nodeId) ?? [])];
+  const visited = new Set<string>();
+
+  while (queue.length > 0) {
+    const edge = queue.shift();
+    if (!edge || visited.has(edge.source)) continue;
+
+    visited.add(edge.source);
+    const upstreamNode = nodesById.get(edge.source);
+    if (!upstreamNode) continue;
+
+    if (upstreamNode.type === 'override' || upstreamNode.type === 'group') {
+      queue.push(...(incomingEdges.get(upstreamNode.id) ?? []));
+      continue;
+    }
+
+    const pipelineStage = pipelineIndex(upstreamNode.type);
+    if (pipelineStage >= 0) {
+      return pipelineStage;
+    }
+  }
+
+  return null;
 }

@@ -47,6 +47,7 @@ interface FlowState {
   addEdge: (source: string, target: string) => boolean;
   removeEdge: (id: string) => void;
   updateNodePosition: (id: string, position: { x: number; y: number }) => void;
+  applyNodeLayout: (positions: Record<string, { x: number; y: number }>) => void;
   updateViewport: (viewport: { x: number; y: number; zoom: number }) => void;
   assignNodeConfig: (nodeId: string, configId?: string) => Promise<void>;
   updateNodeLabel: (id: string, label: string) => void;
@@ -242,6 +243,16 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   updateNodePosition: (id, position) => {
     set((s) => ({
       flowNodes: s.flowNodes.map((n) => (n.id === id ? { ...n, position } : n)),
+    }));
+    scheduleStoreSave(get().saveGraph, get().resolvePaths);
+  },
+
+  applyNodeLayout: (positions) => {
+    set((s) => ({
+      flowNodes: s.flowNodes.map((node) => {
+        const nextPosition = positions[node.id];
+        return nextPosition ? { ...node, position: nextPosition } : node;
+      }),
     }));
     scheduleStoreSave(get().saveGraph, get().resolvePaths);
   },

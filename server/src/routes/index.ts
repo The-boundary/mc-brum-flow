@@ -3,6 +3,7 @@ import { dbQuery } from '../services/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 import { submitDeadlineJob } from '../services/deadline.js';
 import { resolveFlowPaths } from '../services/flowResolver.js';
+import { config } from '../config.js';
 import {
   getMaxSyncState,
   queueAllScenesSync,
@@ -78,7 +79,7 @@ router.get('/scenes', async (_req: Request, res: Response, next: NextFunction) =
 
 router.post('/scenes', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, file_path = '', instance_host = '' } = req.body;
+    const { name, file_path = '', instance_host = config.maxHost } = req.body;
     const { rows } = await dbQuery(
       'INSERT INTO scenes (name, file_path, instance_host) VALUES ($1, $2, $3) RETURNING *',
       [name, file_path, instance_host]

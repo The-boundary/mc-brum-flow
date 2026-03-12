@@ -25,10 +25,11 @@ import {
 } from 'lucide-react';
 
 import { useFlowStore } from '@/stores/flowStore';
+import { useUiStore } from '@/stores/uiStore';
 import { nodeTypes } from './nodes';
 import { ColoredEdge } from './ColoredEdge';
 import { getFlowSemantics } from './graphSemantics';
-import { getFlowHandleLayout, getSuggestedNextNodeTypes } from './flowLayout';
+import { getAutoLayoutPositions, getFlowHandleLayout, getSuggestedNextNodeTypes } from './flowLayout';
 import type { NodeType } from '@shared/types';
 
 const edgeTypes: EdgeTypes = {
@@ -69,10 +70,12 @@ const NODE_TYPE_META: Record<NodeType, { label: string; icon: typeof Camera }> =
 };
 
 export function NodeFlowView() {
+  const autoLayoutNonce = useUiStore((state) => state.autoLayoutNonce);
+  const fitViewNonce = useUiStore((state) => state.fitViewNonce);
   const {
     flowNodes, flowEdges: storeEdges, selectedNodeId, viewport,
     selectNode, addNode, addEdge: storeAddEdge, removeNode, removeEdge,
-    updateNodePosition, updateViewport, saveGraph,
+    updateNodePosition, applyNodeLayout, updateViewport, saveGraph,
   } = useFlowStore();
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -284,6 +287,24 @@ export function NodeFlowView() {
     setContextMenu(null);
     setAutoSuggest(null);
   }, [addNode, storeAddEdge, scheduleSave]);
+
+  useEffect(() => {
+    if (!autoLayoutNonce || flowNodes.length === 0) {
+      return;
+    }
+
+    const nextPositions = getAutoLayoutPositions(flowNodes, storeEdges);
+    applyNodeLayout(nextPositions);
+    reactFlowInstance.fitView({ duration: 220, padding: 0.18 });
+  }, [applyNodeLayout, autoLayoutNonce, flowNodes, reactFlowInstance, storeEdges]);
+
+  useEffect(() => {
+    if (!fitViewNonce || flowNodes.length === 0) {
+      return;
+    }
+
+    reactFlowInstance.fitView({ duration: 220, padding: 0.18 });
+  }, [fitViewNonce, flowNodes.length, reactFlowInstance]);
 
   // All node types for context menu
   const allNodeTypes = Object.entries(NODE_TYPE_META);

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, type ReactNode } from 'react';
 import {
   Workflow, List, PanelRightOpen, PanelRightClose, Loader2,
-  Plus, LayoutGrid, MonitorDot, BarChart3,
+  Plus, LayoutGrid, MonitorDot, BarChart3, RefreshCcw, Save, Route, ScanSearch,
 } from 'lucide-react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useUiStore } from '@/stores/uiStore';
@@ -12,8 +12,29 @@ import { DetailPanel } from '@/components/detail/DetailPanel';
 import { OutputPreviewPanel } from '@/components/output/OutputPreviewPanel';
 
 export default function BrumFlowPage() {
-  const { viewMode, setViewMode, detailPanelOpen, toggleDetailPanel, outputPanelOpen, toggleOutputPanel } = useUiStore();
-  const { loading, error, scenes, activeSceneId, setActiveScene, loadAll, initSocket, pathCount, maxSyncState } = useFlowStore();
+  const {
+    viewMode,
+    setViewMode,
+    detailPanelOpen,
+    toggleDetailPanel,
+    outputPanelOpen,
+    toggleOutputPanel,
+    requestAutoLayout,
+    requestFitView,
+  } = useUiStore();
+  const {
+    loading,
+    error,
+    scenes,
+    activeSceneId,
+    setActiveScene,
+    loadAll,
+    initSocket,
+    pathCount,
+    maxSyncState,
+    saveGraph,
+    resolvePaths,
+  } = useFlowStore();
 
   useEffect(() => {
     loadAll();
@@ -38,6 +59,21 @@ export default function BrumFlowPage() {
       </div>
     );
   }
+
+  const handleRefreshScene = () => {
+    if (activeSceneId) {
+      void setActiveScene(activeSceneId);
+      return;
+    }
+
+    void loadAll();
+  };
+
+  const handleSaveNow = () => {
+    void saveGraph().then(async () => {
+      await resolvePaths();
+    });
+  };
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -67,11 +103,9 @@ export default function BrumFlowPage() {
         </div>
 
         {/* Toolbar + view toggle */}
-        <div className="h-10 border-b border-border flex items-center justify-between px-3 shrink-0">
+        <div className="h-10 border-b border-border flex items-center px-3 shrink-0 gap-3">
           {/* Left: toolbar actions */}
-          <div className="flex items-center gap-1">
-            <ToolbarButton icon={LayoutGrid} tooltip="Auto Layout" />
-            <div className="w-px h-5 bg-border mx-1" />
+          <div className="flex flex-1 items-center gap-1 min-w-0">
             <Tooltip text={`Output Preview (${pathCount} paths)`}>
               <button
                 onClick={toggleOutputPanel}
@@ -87,8 +121,42 @@ export default function BrumFlowPage() {
             </Tooltip>
           </div>
 
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-surface-200/60 px-1 py-0.5">
+            <ToolbarButton
+              icon={LayoutGrid}
+              tooltip="Auto layout graph"
+              onClick={requestAutoLayout}
+              disabled={viewMode !== 'flow' || loading}
+            />
+            <ToolbarButton
+              icon={ScanSearch}
+              tooltip="Fit graph to view"
+              onClick={requestFitView}
+              disabled={viewMode !== 'flow' || loading}
+            />
+            <div className="mx-1 h-4 w-px bg-border" />
+            <ToolbarButton
+              icon={Save}
+              tooltip="Save graph now"
+              onClick={handleSaveNow}
+              disabled={!activeSceneId || loading}
+            />
+            <ToolbarButton
+              icon={Route}
+              tooltip="Resolve paths"
+              onClick={() => void resolvePaths()}
+              disabled={!activeSceneId || loading}
+            />
+            <ToolbarButton
+              icon={RefreshCcw}
+              tooltip="Reload current scene"
+              onClick={handleRefreshScene}
+              disabled={loading}
+            />
+          </div>
+
           {/* Right: view toggle + detail panel */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-1 items-center justify-end gap-2">
             {loading && (
               <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
             )}
@@ -171,12 +239,27 @@ export default function BrumFlowPage() {
   );
 }
 
-function ToolbarButton({ icon: Icon, tooltip, onClick }: { icon: React.ComponentType<{ className?: string }>; tooltip: string; onClick?: () => void }) {
+function ToolbarButton({
+  icon: Icon,
+  tooltip,
+  onClick,
+  disabled = false,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  tooltip: string;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
   return (
     <Tooltip text={tooltip}>
       <button
         onClick={onClick}
-        className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-surface-300 transition"
+        disabled={disabled}
+        className={`p-1.5 rounded transition ${
+          disabled
+            ? 'cursor-not-allowed text-fg-dim opacity-40'
+            : 'text-muted-foreground hover:text-foreground hover:bg-surface-300'
+        }`}
       >
         <Icon className="w-3.5 h-3.5" />
       </button>
