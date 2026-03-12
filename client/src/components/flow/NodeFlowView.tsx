@@ -30,9 +30,11 @@ import {
   Gauge,
   Keyboard,
   Layers,
+  Link2,
   RectangleHorizontal,
   Server,
   Sun,
+  Unlink2,
 } from 'lucide-react';
 
 import type { FlowEdge, FlowNode, NodeType } from '@shared/types';
@@ -228,6 +230,7 @@ export function NodeFlowView() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [autoSuggest, setAutoSuggest] = useState<AutoSuggestState | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [linkCameras, setLinkCameras] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingConnectionRef = useRef<PendingConnectionState | null>(null);
   const autoSuggestJustSetRef = useRef(false);
@@ -363,15 +366,58 @@ export function NodeFlowView() {
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<Node>[]) => {
-      onNodesChange(changes);
+      let finalChanges = changes;
+
+      if (linkCameras) {
+        const extra: NodeChange<Node>[] = [];
+        for (const change of changes) {
+          if (change.type === 'position' && change.dragging && change.position) {
+            const draggedNode = nodes.find((n) => n.id === change.id);
+            if (draggedNode?.type === 'camera') {
+              const dx = change.position.x - draggedNode.position.x;
+              const dy = change.position.y - draggedNode.position.y;
+              if (dx !== 0 || dy !== 0) {
+                for (const node of nodes) {
+                  if (node.type === 'camera' && node.id !== change.id) {
+                    extra.push({
+                      type: 'position',
+                      id: node.id,
+                      position: { x: node.position.x + dx, y: node.position.y + dy },
+                      dragging: true,
+                    });
+                  }
+                }
+              }
+            }
+          }
+        }
+        if (extra.length > 0) {
+          finalChanges = [...changes, ...extra];
+        }
+      }
+
+      onNodesChange(finalChanges);
+
       for (const change of changes) {
         if (change.type === 'position' && change.position && !change.dragging) {
           updateNodePosition(change.id, change.position);
+
+          if (linkCameras) {
+            const draggedNode = nodes.find((n) => n.id === change.id);
+            if (draggedNode?.type === 'camera') {
+              for (const node of nodes) {
+                if (node.type === 'camera' && node.id !== change.id) {
+                  updateNodePosition(node.id, node.position);
+                }
+              }
+            }
+          }
+
           scheduleSave();
         }
       }
     },
-    [onNodesChange, scheduleSave, updateNodePosition]
+    [onNodesChange, scheduleSave, updateNodePosition, linkCameras, nodes]
   );
 
   const onConnect: OnConnect = useCallback(
@@ -624,6 +670,23 @@ export function NodeFlowView() {
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(190 12% 20%)" />
         <Controls className="!bg-surface-200 !border-border !rounded-lg [&>button]:!bg-surface-300 [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-surface-400" />
+
+        {/* Link cameras toggle */}
+        <div className="absolute bottom-3 left-14 z-10">
+          <button
+            type="button"
+            onClick={() => setLinkCameras((v) => !v)}
+            title={linkCameras ? 'Cameras linked — drag one to move all' : 'Cameras independent — click to link'}
+            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium shadow-md backdrop-blur-sm transition-all ${
+              linkCameras
+                ? 'border-emerald-500/50 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
+                : 'border-border bg-surface-200/90 text-fg-muted hover:bg-surface-300 hover:text-foreground'
+            }`}
+          >
+            {linkCameras ? <Link2 className="h-3.5 w-3.5" /> : <Unlink2 className="h-3.5 w-3.5" />}
+            {linkCameras ? 'Cameras Linked' : 'Link Cameras'}
+          </button>
+        </div>
         <MiniMap
           className="!bg-surface-100 !border-border !rounded-lg"
           nodeColor={(node) => getMiniMapNodeColor(node.type)}
