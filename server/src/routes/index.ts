@@ -7,6 +7,7 @@ import { config } from '../config.js';
 import { executeMaxMcpScript, probeMaxMcp } from '../services/max-mcp-client.js';
 import {
   getMaxSyncState,
+  MaxCameraNotFoundError,
   queueAllScenesSync,
   queueSceneSync,
   queueScenesUsingNodeConfig,
@@ -73,6 +74,10 @@ async function loadResolvedSceneData(sceneId: string) {
     defaults,
     paths,
   };
+}
+
+function areSerializedValuesEqual(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 // ── Health (no auth) ──
@@ -299,11 +304,6 @@ router.post('/cameras/import-from-max', async (req: Request, res: Response, next
       }
     }
 
-    triggerBackgroundSync(
-      queueSceneSync({ sceneId: scene_id, reason: 'cameras:imported-from-max' }),
-      { sceneId: scene_id },
-    );
-
     res.json({ success: true, data: { imported: imported.length, cameras: imported } });
   } catch (e) { next(e); }
 });
@@ -336,6 +336,10 @@ router.get('/flow-config', async (req: Request, res: Response, next: NextFunctio
 router.post('/flow-config', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { scene_id, nodes, edges, viewport } = req.body;
+    const previousResult = await dbQuery('SELECT nodes, edges FROM flow_configs WHERE scene_id = $1', [scene_id]);
+    const previousFlow = previousResult.rows[0] ?? null;
+    const nodesChanged = !areSerializedValuesEqual(previousFlow?.nodes ?? [], nodes ?? []);
+    const edgesChanged = !areSerializedValuesEqual(previousFlow?.edges ?? [], edges ?? []);
     const { rows } = await dbQuery(
       `INSERT INTO flow_configs (scene_id, nodes, edges, viewport)
        VALUES ($1, $2, $3, $4)
@@ -344,10 +348,12 @@ router.post('/flow-config', async (req: Request, res: Response, next: NextFuncti
       [scene_id, JSON.stringify(nodes), JSON.stringify(edges), JSON.stringify(viewport)]
     );
     req.app.get('io')?.emit('flow-config:updated', rows[0]);
-    triggerBackgroundSync(
-      queueSceneSync({ sceneId: scene_id, reason: 'flow-config:updated' }),
-      { sceneId: scene_id },
-    );
+    if (nodesChanged || edgesChanged) {
+      triggerBackgroundSync(
+        queueSceneSync({ sceneId: scene_id, reason: 'flow-config:updated' }),
+        { sceneId: scene_id },
+      );
+    }
     res.json({ success: true, data: rows[0] });
   } catch (e) { next(e); }
 });
@@ -391,7 +397,20 @@ router.post('/push-to-max', async (req: Request, res: Response, next: NextFuncti
       force: true,
     });
     res.json({ success: true, data: syncState });
-  } catch (e) { next(e); }
+  } catch (e) {
+    if (e instanceof MaxCameraNotFoundError) {
+      return res.status(409).json({
+        success: false,
+        error: {
+          code: e.code,
+          message: e.message,
+          requested_camera_name: e.requestedCameraName,
+          available_cameras: e.availableCameras,
+        },
+      });
+    }
+    next(e);
+  }
 });
 
 // ── Submit Render ──

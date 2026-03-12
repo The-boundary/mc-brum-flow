@@ -111,23 +111,118 @@ export const PIPELINE_ORDER: NodeType[] = [
 // Override can appear after any processing node
 export const OVERRIDE_TYPE: NodeType = 'override';
 
+const DIRECT_CONNECTIONS: Record<NodeType, NodeType[]> = {
+  camera: ['group', 'lightSetup'],
+  group: ['group', 'lightSetup'],
+  lightSetup: ['override', 'toneMapping'],
+  toneMapping: ['override', 'layerSetup'],
+  layerSetup: ['override', 'aspectRatio'],
+  aspectRatio: ['override', 'stageRev'],
+  stageRev: ['override', 'deadline'],
+  override: [],
+  deadline: ['output'],
+  output: [],
+};
+
+const OVERRIDABLE_SOURCE_TYPES = new Set<NodeType>([
+  'lightSetup',
+  'toneMapping',
+  'layerSetup',
+  'aspectRatio',
+  'stageRev',
+]);
+
 // Returns the pipeline stage index for a node type (-1 for override)
 export function pipelineIndex(type: NodeType): number {
   if (type === 'override') return -1;
   return PIPELINE_ORDER.indexOf(type);
 }
 
-// Check if a connection from sourceType to targetType is valid
-export function isValidConnection(sourceType: NodeType, targetType: NodeType): boolean {
-  if (targetType === 'override') return true; // override can follow anything
-  if (sourceType === 'override') {
-    // override outputs to the next stage after whatever it overrides
-    return true; // validation happens contextually
+function getNextPipelineType(type: NodeType): NodeType | null {
+  const allowedTargets = DIRECT_CONNECTIONS[type] ?? [];
+  return allowedTargets.find((targetType) => targetType !== OVERRIDE_TYPE) ?? null;
+}
+
+function getIncomingEdges(flowEdges: FlowEdge[]) {
+  const incoming = new Map<string, FlowEdge[]>();
+
+  for (const edge of flowEdges) {
+    const existing = incoming.get(edge.target);
+    if (existing) {
+      existing.push(edge);
+    } else {
+      incoming.set(edge.target, [edge]);
+    }
   }
-  const si = pipelineIndex(sourceType);
-  const ti = pipelineIndex(targetType);
-  if (si < 0 || ti < 0) return false;
-  // group can connect to group (same stage) or next stages
-  if (sourceType === 'group' && targetType === 'group') return true;
-  return ti > si;
+
+  return incoming;
+}
+
+function getOverrideBaseType(sourceNodeId: string, flowNodes: FlowNode[], flowEdges: FlowEdge[]): NodeType | null {
+  const nodesById = new Map(flowNodes.map((node) => [node.id, node]));
+  const incoming = getIncomingEdges(flowEdges);
+  const queue = [sourceNodeId];
+  const visited = new Set<string>();
+  const continuationTypes = new Set<NodeType>();
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift();
+    if (!nodeId || visited.has(nodeId)) continue;
+    visited.add(nodeId);
+
+    for (const edge of incoming.get(nodeId) ?? []) {
+      const upstreamNode = nodesById.get(edge.source);
+      if (!upstreamNode) continue;
+
+      if (upstreamNode.type === OVERRIDE_TYPE) {
+        queue.push(upstreamNode.id);
+        continue;
+      }
+
+      if (!OVERRIDABLE_SOURCE_TYPES.has(upstreamNode.type)) {
+        continue;
+      }
+
+      const nextType = getNextPipelineType(upstreamNode.type);
+      if (nextType) {
+        continuationTypes.add(nextType);
+      }
+    }
+  }
+
+  if (continuationTypes.size !== 1) {
+    return null;
+  }
+
+  return [...continuationTypes][0] ?? null;
+}
+
+export function getAllowedTargetNodeTypes(sourceNodeId: string, flowNodes: FlowNode[], flowEdges: FlowEdge[]): NodeType[] {
+  const sourceNode = flowNodes.find((node) => node.id === sourceNodeId);
+  if (!sourceNode) return [];
+
+  if (sourceNode.type === OVERRIDE_TYPE) {
+    const continuationType = getOverrideBaseType(sourceNodeId, flowNodes, flowEdges);
+    return continuationType ? [continuationType] : [];
+  }
+
+  return [...(DIRECT_CONNECTIONS[sourceNode.type] ?? [])];
+}
+
+export function isValidConnection(sourceType: NodeType, targetType: NodeType): boolean {
+  return (DIRECT_CONNECTIONS[sourceType] ?? []).includes(targetType);
+}
+
+export function isValidFlowConnection(
+  sourceNodeId: string,
+  targetNodeId: string,
+  flowNodes: FlowNode[],
+  flowEdges: FlowEdge[],
+): boolean {
+  if (sourceNodeId === targetNodeId) return false;
+
+  const targetNode = flowNodes.find((node) => node.id === targetNodeId);
+  if (!targetNode) return false;
+
+  return getAllowedTargetNodeTypes(sourceNodeId, flowNodes, flowEdges).includes(targetNode.type);
 }

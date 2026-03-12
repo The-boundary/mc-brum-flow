@@ -34,14 +34,23 @@ export default function BrumFlowPage() {
     initSocket,
     pathCount,
     maxSyncState,
+    cameraMatchPrompt,
     resolvePaths,
     selectedNodeId,
     removeNode,
+    assignNodeCamera,
+    dismissCameraMatchPrompt,
+    pushToMax,
     importCamerasFromMax,
   } = useFlowStore();
 
   const [socketConnected, setSocketConnected] = useState(false);
   const [isImportingCameras, setIsImportingCameras] = useState(false);
+  const [selectedReplacementCameraId, setSelectedReplacementCameraId] = useState('');
+
+  useEffect(() => {
+    setSelectedReplacementCameraId(cameraMatchPrompt?.availableCameras[0]?.id ?? '');
+  }, [cameraMatchPrompt]);
 
   useEffect(() => {
     loadAll();
@@ -293,10 +302,68 @@ export default function BrumFlowPage() {
         </div>
       </div>
 
-      {/* Detail panel */}
+        {/* Detail panel */}
       {detailPanelOpen && (
         <div className="w-[380px] shrink-0 border-l border-border overflow-y-auto">
           <DetailPanel />
+        </div>
+      )}
+
+      {cameraMatchPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-surface-100 p-5 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10 text-amber-300">
+                <Camera className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-foreground">Camera missing in 3ds Max</h3>
+                <p className="mt-1 text-xs text-fg-muted">
+                  `{cameraMatchPrompt.requestedCameraName}` was not found in the current 3ds Max scene. Pick a scene camera to rebind this node.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              <label className="block text-[11px] font-medium uppercase tracking-wider text-fg-dim">Replacement camera</label>
+              <select
+                value={selectedReplacementCameraId}
+                onChange={(event) => setSelectedReplacementCameraId(event.target.value)}
+                className="w-full rounded-lg border border-border bg-surface-200 px-3 py-2 text-xs text-foreground focus:border-brand focus:outline-none"
+              >
+                {cameraMatchPrompt.availableCameras.map((camera) => (
+                  <option key={camera.id} value={camera.id}>
+                    {camera.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                onClick={dismissCameraMatchPrompt}
+                className="rounded-lg border border-border px-3 py-2 text-xs text-foreground transition hover:bg-surface-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (!selectedReplacementCameraId) return;
+                  void assignNodeCamera(cameraMatchPrompt.nodeId, selectedReplacementCameraId)
+                    .then(async () => {
+                      dismissCameraMatchPrompt();
+                      if (cameraMatchPrompt.pathKey) {
+                        await pushToMax(cameraMatchPrompt.pathKey);
+                      }
+                    });
+                }}
+                disabled={!selectedReplacementCameraId}
+                className="rounded-lg bg-brand px-3 py-2 text-xs font-medium text-background transition hover:bg-brand-500 disabled:opacity-50"
+              >
+                Rebind and retry
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

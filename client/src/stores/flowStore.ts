@@ -1,9 +1,9 @@
 import { create } from 'zustand';
+import { ApiError } from '@/lib/api';
 import * as api from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 import { getFlowHandleLayout } from '@/components/flow/flowLayout';
 import type { Scene, Camera, StudioDefault, NodeConfig, FlowNode, FlowEdge, NodeType, MaxSyncState } from '@shared/types';
-import { isValidConnection } from '@shared/types';
 import type { MaxHealthResult } from '@/lib/api';
 
 export interface ResolvedPath {
@@ -28,6 +28,13 @@ export interface SyncLogEntry {
   durationMs?: number;
 }
 
+export interface CameraMatchPrompt {
+  nodeId: string;
+  pathKey?: string;
+  requestedCameraName: string;
+  availableCameras: Camera[];
+}
+
 interface FlowState {
   // Data
   scenes: Scene[];
@@ -49,6 +56,7 @@ interface FlowState {
 
   // Max connection
   maxHealth: MaxHealthResult | null;
+  cameraMatchPrompt: CameraMatchPrompt | null;
 
   // Sync activity log
   syncLog: SyncLogEntry[];
@@ -69,6 +77,7 @@ interface FlowState {
   applyNodeLayout: (positions: Record<string, { x: number; y: number }>) => void;
   updateViewport: (viewport: { x: number; y: number; zoom: number }) => void;
   assignNodeConfig: (nodeId: string, configId?: string) => Promise<void>;
+  assignNodeCamera: (nodeId: string, cameraId: string) => Promise<void>;
   updateNodeLabel: (id: string, label: string) => void;
   toggleHidePrevious: (id: string) => void;
   setResolvedPathEnabled: (pathKey: string, outputNodeId: string, enabled: boolean) => Promise<void>;
@@ -85,6 +94,7 @@ interface FlowState {
   pushToMax: (pathKey?: string, pathIndex?: number) => Promise<boolean>;
   submitRender: (pathIndices: number[]) => Promise<boolean>;
   addSyncLog: (entry: Omit<SyncLogEntry, 'id' | 'timestamp'>) => void;
+  dismissCameraMatchPrompt: () => void;
 }
 
 let nextNodeId = 1;
@@ -98,7 +108,7 @@ function genNodeId(): string {
 
 function scheduleStoreSave(
   saveGraph: () => Promise<void>,
-  resolvePaths: () => Promise<void>,
+  resolvePaths?: () => Promise<void>,
   needsResolve = false,
 ) {
   persistNeedsResolve = persistNeedsResolve || needsResolve;
@@ -107,11 +117,94 @@ function scheduleStoreSave(
     const shouldResolve = persistNeedsResolve;
     persistNeedsResolve = false;
     void saveGraph().then(async () => {
-      if (shouldResolve) {
+      if (shouldResolve && resolvePaths) {
         await resolvePaths();
       }
     });
   }, 400);
+}
+
+function areSerializedValuesEqual(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+const DIRECT_CONNECTIONS: Record<NodeType, NodeType[]> = {
+  camera: ['group', 'lightSetup'],
+  group: ['group', 'lightSetup'],
+  lightSetup: ['override', 'toneMapping'],
+  toneMapping: ['override', 'layerSetup'],
+  layerSetup: ['override', 'aspectRatio'],
+  aspectRatio: ['override', 'stageRev'],
+  stageRev: ['override', 'deadline'],
+  override: [],
+  deadline: ['output'],
+  output: [],
+};
+
+const OVERRIDABLE_SOURCE_TYPES = new Set<NodeType>([
+  'lightSetup',
+  'toneMapping',
+  'layerSetup',
+  'aspectRatio',
+  'stageRev',
+]);
+
+function getNextPipelineType(type: NodeType): NodeType | null {
+  return (DIRECT_CONNECTIONS[type] ?? []).find((targetType) => targetType !== 'override') ?? null;
+}
+
+function isValidFlowConnection(sourceNodeId: string, targetNodeId: string, flowNodes: FlowNode[], flowEdges: FlowEdge[]) {
+  if (sourceNodeId === targetNodeId) return false;
+
+  const nodesById = new Map(flowNodes.map((node) => [node.id, node]));
+  const sourceNode = nodesById.get(sourceNodeId);
+  const targetNode = nodesById.get(targetNodeId);
+  if (!sourceNode || !targetNode) return false;
+
+  if (sourceNode.type !== 'override') {
+    return (DIRECT_CONNECTIONS[sourceNode.type] ?? []).includes(targetNode.type);
+  }
+
+  const incoming = new Map<string, FlowEdge[]>();
+  for (const edge of flowEdges) {
+    const existing = incoming.get(edge.target);
+    if (existing) {
+      existing.push(edge);
+    } else {
+      incoming.set(edge.target, [edge]);
+    }
+  }
+
+  const queue = [sourceNodeId];
+  const visited = new Set<string>();
+  const continuationTypes = new Set<NodeType>();
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift();
+    if (!nodeId || visited.has(nodeId)) continue;
+    visited.add(nodeId);
+
+    for (const edge of incoming.get(nodeId) ?? []) {
+      const upstreamNode = nodesById.get(edge.source);
+      if (!upstreamNode) continue;
+
+      if (upstreamNode.type === 'override') {
+        queue.push(upstreamNode.id);
+        continue;
+      }
+
+      if (!OVERRIDABLE_SOURCE_TYPES.has(upstreamNode.type)) {
+        continue;
+      }
+
+      const nextType = getNextPipelineType(upstreamNode.type);
+      if (nextType) {
+        continuationTypes.add(nextType);
+      }
+    }
+  }
+
+  return continuationTypes.size === 1 && continuationTypes.has(targetNode.type);
 }
 
 function normalizeFlowEdges(flowNodes: FlowNode[], flowEdges: FlowEdge[]) {
@@ -140,6 +233,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   pathCount: 0,
   maxSyncState: null,
   maxHealth: null,
+  cameraMatchPrompt: null,
   syncLog: [],
   loading: true,
   error: null,
@@ -275,7 +369,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     const sourceNode = flowNodes.find((n) => n.id === source);
     const targetNode = flowNodes.find((n) => n.id === target);
     if (!sourceNode || !targetNode) return false;
-    if (!isValidConnection(sourceNode.type, targetNode.type)) return false;
+    if (!isValidFlowConnection(source, target, flowNodes, flowEdges)) return false;
     // Prevent duplicate edges
     if (flowEdges.some((e) => e.source === source && e.target === target && e.source_handle === (sourceHandle ?? undefined) && e.target_handle === (targetHandle ?? undefined))) {
       return false;
@@ -317,7 +411,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
 
   updateViewport: (viewport) => {
     set({ viewport });
-    scheduleStoreSave(get().saveGraph, get().resolvePaths);
+    scheduleStoreSave(get().saveGraph);
   },
 
   assignNodeConfig: async (nodeId, configId) => {
@@ -332,6 +426,22 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
         };
       }),
     }));
+    await get().saveGraph();
+    await get().resolvePaths();
+  },
+
+  assignNodeCamera: async (nodeId, cameraId) => {
+    const camera = get().cameras.find((entry) => entry.id === cameraId);
+    if (!camera) return;
+
+    set((s) => ({
+      flowNodes: s.flowNodes.map((node) => (
+        node.id === nodeId && node.type === 'camera'
+          ? { ...node, camera_id: cameraId, label: camera.name }
+          : node
+      )),
+    }));
+
     await get().saveGraph();
     await get().resolvePaths();
   },
@@ -577,11 +687,19 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     socket.on('flow-config:updated', (row: any) => {
       const { activeSceneId } = get();
       if (row.scene_id === activeSceneId) {
-        const currentViewport = get().viewport;
+        const nextNodes = row.nodes || [];
+        const nextEdges = normalizeFlowEdges(nextNodes, row.edges || []);
+        const currentState = get();
+        const nodesChanged = !areSerializedValuesEqual(currentState.flowNodes, nextNodes);
+        const edgesChanged = !areSerializedValuesEqual(currentState.flowEdges, nextEdges);
+
+        if (!nodesChanged && !edgesChanged) {
+          return;
+        }
+
         set({
-          flowNodes: row.nodes || [],
-          flowEdges: normalizeFlowEdges(row.nodes || [], row.edges || []),
-          viewport: currentViewport,
+          flowNodes: nextNodes,
+          flowEdges: nextEdges,
         });
         void get().resolvePaths();
       }
@@ -695,6 +813,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     const { activeSceneId } = get();
     if (!activeSceneId) return false;
     try {
+      set({ cameraMatchPrompt: null });
       const state = await api.pushToMax(activeSceneId, pathKey, pathIndex);
       set({ maxSyncState: state });
       get().addSyncLog({
@@ -706,6 +825,49 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
       });
       return true;
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'max_camera_not_found') {
+        await get().importCamerasFromMax().catch(() => 0);
+
+        const { resolvedPaths, flowNodes, cameras } = get();
+        const requestedCameraName = typeof err.details?.requested_camera_name === 'string'
+          ? err.details.requested_camera_name
+          : 'Unknown camera';
+        const availableHandles = Array.isArray(err.details?.available_cameras)
+          ? new Set(
+              err.details.available_cameras
+                .map((camera) => (typeof camera === 'object' && camera && 'max_handle' in camera ? Number((camera as { max_handle: unknown }).max_handle) : NaN))
+                .filter((value) => Number.isFinite(value))
+            )
+          : null;
+        const resolvedPath = pathKey ? resolvedPaths.find((path) => path.pathKey === pathKey) : null;
+        const cameraNodeId = resolvedPath?.nodeIds.find((nodeId) => flowNodes.find((node) => node.id === nodeId)?.type === 'camera');
+        const availableCameras = availableHandles && availableHandles.size > 0
+          ? cameras.filter((camera) => availableHandles.has(camera.max_handle))
+          : cameras;
+
+        if (cameraNodeId && availableCameras.length > 0) {
+          set({
+            cameraMatchPrompt: {
+              nodeId: cameraNodeId,
+              pathKey,
+              requestedCameraName,
+              availableCameras,
+            },
+            error: err.message,
+          });
+        } else {
+          set({ error: err.message });
+        }
+
+        get().addSyncLog({
+          status: 'error',
+          reason: 'camera-not-found-in-max',
+          cameraName: requestedCameraName,
+          error: err.message,
+        });
+        return false;
+      }
+
       set({ error: err instanceof Error ? err.message : 'Push to Max failed' });
       get().addSyncLog({
         status: 'error',
@@ -745,4 +907,6 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     };
     set((s) => ({ syncLog: [log, ...s.syncLog].slice(0, 50) }));
   },
+
+  dismissCameraMatchPrompt: () => set({ cameraMatchPrompt: null }),
 }));

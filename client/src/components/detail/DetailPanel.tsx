@@ -374,6 +374,7 @@ export function DetailPanel() {
 function CameraDetail({ nodeId }: { nodeId: string }) {
   const node = useFlowStore((state) => state.flowNodes.find((entry) => entry.id === nodeId));
   const cameras = useFlowStore((state) => state.cameras);
+  const assignNodeCamera = useFlowStore((state) => state.assignNodeCamera);
   const updateNodeLabel = useFlowStore((state) => state.updateNodeLabel);
 
   if (!node) {
@@ -410,6 +411,25 @@ function CameraDetail({ nodeId }: { nodeId: string }) {
           onChange={(event) => updateNodeLabel(nodeId, event.target.value)}
           className="w-full rounded border border-border bg-surface-300 px-2 py-1 text-xs text-foreground focus:border-brand focus:outline-none"
         />
+      </Section>
+
+      <Section title="Scene Camera">
+        <select
+          value={node.camera_id ?? ''}
+          onChange={(event) => {
+            if (event.target.value) {
+              void assignNodeCamera(nodeId, event.target.value);
+            }
+          }}
+          className="w-full rounded border border-border bg-surface-300 px-2 py-1.5 text-xs text-foreground focus:border-brand focus:outline-none"
+        >
+          <option value="">Select a scene camera</option>
+          {cameras.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {entry.name}
+            </option>
+          ))}
+        </select>
       </Section>
     </div>
   );

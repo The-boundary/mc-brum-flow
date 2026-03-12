@@ -42,6 +42,25 @@ interface AssignmentInstruction {
   valueExpr?: string;
 }
 
+export interface MaxSceneCameraInfo {
+  name: string;
+  max_handle: number;
+  max_class?: string;
+}
+
+export class MaxCameraNotFoundError extends Error {
+  code = 'max_camera_not_found';
+  requestedCameraName: string;
+  availableCameras: MaxSceneCameraInfo[];
+
+  constructor(requestedCameraName: string, availableCameras: MaxSceneCameraInfo[]) {
+    super(`Camera not found in 3ds Max: ${requestedCameraName}`);
+    this.name = 'MaxCameraNotFoundError';
+    this.requestedCameraName = requestedCameraName;
+    this.availableCameras = availableCameras;
+  }
+}
+
 const FALLBACK_GROUPS = fallbackStudioDefaults as Record<string, any>;
 const GROUP_ALIASES: Record<string, string> = {
   color_management: 'gamma_color',
@@ -62,6 +81,35 @@ interface PendingSceneSync extends QueueSceneSyncInput {
 
 const pendingSceneSyncs = new Map<string, PendingSceneSync>();
 const sceneSyncLocks = new Map<string, Promise<void>>();
+
+function buildImportCamerasScript() {
+  return `(
+local cameraJson = #()
+for cam in cameras do (
+  local camName = try (cam.name as string) catch ""
+  local camClass = try ((classOf cam) as string) catch ""
+  local camHandle = try (getHandleByAnim cam) catch 0
+  append cameraJson ("{\\\"name\\\":\\\"" + MCP_Server.escapeJsonString camName + "\\\",\\\"max_handle\\\":" + (camHandle as string) + ",\\\"max_class\\\":\\\"" + MCP_Server.escapeJsonString camClass + "\\\"}")
+)
+local joined = ""
+for i = 1 to cameraJson.count do (
+  if i > 1 do joined += ","
+  joined += cameraJson[i]
+)
+"[" + joined + "]"
+)`;
+}
+
+function getMissingCameraName(message: string): string | null {
+  const match = message.match(/Camera not found:\s*(.+)$/i);
+  return match?.[1]?.trim() ?? null;
+}
+
+async function getSceneCamerasFromMax(host?: string) {
+  const response = await executeMaxMcpScript(buildImportCamerasScript(), 30_000, { host });
+  const parsed = JSON.parse(response.result || '[]') as MaxSceneCameraInfo[];
+  return Array.isArray(parsed) ? parsed.filter((camera) => typeof camera?.name === 'string') : [];
+}
 
 export async function getMaxSyncState(sceneId: string): Promise<MaxSyncState | null> {
   const { rows } = await dbQuery<MaxSyncState>('SELECT * FROM max_sync_state WHERE scene_id = $1', [sceneId]);
@@ -225,6 +273,7 @@ export async function syncSceneToMaxNow(input: SyncSceneNowInput): Promise<MaxSy
     return successState;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown Max sync error';
+    const missingCameraName = getMissingCameraName(message);
     const failureState = await upsertMaxSyncState(input.sceneId, {
       status: 'error',
       active_path_key: target.path.pathKey,
@@ -233,6 +282,13 @@ export async function syncSceneToMaxNow(input: SyncSceneNowInput): Promise<MaxSy
       last_error: message,
     });
     emitSyncState(failureState);
+    if (missingCameraName) {
+      const maxHost = typeof context.scene.instance_host === 'string' && context.scene.instance_host.trim().length > 0
+        ? context.scene.instance_host.trim()
+        : undefined;
+      const availableCameras = await getSceneCamerasFromMax(maxHost).catch(() => []);
+      throw new MaxCameraNotFoundError(missingCameraName, availableCameras);
+    }
     throw error;
   }
 }

@@ -233,6 +233,7 @@ export function NodeFlowView() {
   const autoSuggestJustSetRef = useRef(false);
   const lastAppliedViewportSceneRef = useRef<string | null>(null);
   const reactFlowInstance = useReactFlow();
+  const initialViewport = useMemo(() => viewport, [activeSceneId]);
 
   const hiddenPreviousNodeIds = useMemo(
     () => getHiddenPreviousNodeIds(flowNodes, storeEdges),
@@ -612,7 +613,7 @@ export function NodeFlowView() {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         connectionLineComponent={BranchConnectionLine}
-        defaultViewport={viewport}
+        defaultViewport={initialViewport}
         fitView={false}
         minZoom={0.1}
         maxZoom={3}

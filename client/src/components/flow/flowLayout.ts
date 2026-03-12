@@ -172,42 +172,70 @@ export function getAutoLayoutPositions(flowNodes: FlowNode[], flowEdges: FlowEdg
 
 // ── Suggestion Helpers ──
 
-const NEXT_STAGE_BY_TYPE: Partial<Record<NodeType, NodeType>> = {
-  camera: 'lightSetup',
-  group: 'lightSetup',
-  lightSetup: 'toneMapping',
-  toneMapping: 'layerSetup',
-  layerSetup: 'aspectRatio',
-  aspectRatio: 'stageRev',
-  stageRev: 'deadline',
-  deadline: 'output',
+const DIRECT_CONNECTIONS: Record<NodeType, NodeType[]> = {
+  camera: ['group', 'lightSetup'],
+  group: ['group', 'lightSetup'],
+  lightSetup: ['override', 'toneMapping'],
+  toneMapping: ['override', 'layerSetup'],
+  layerSetup: ['override', 'aspectRatio'],
+  aspectRatio: ['override', 'stageRev'],
+  stageRev: ['override', 'deadline'],
+  override: [],
+  deadline: ['output'],
+  output: [],
 };
 
-function getOverrideContinuationType(
-  nodesById: Map<string, FlowNode>,
-  incoming: Map<string, FlowEdge[]>,
-  sourceNodeId: string
-): NodeType | null {
+const OVERRIDABLE_SOURCE_TYPES = new Set<NodeType>([
+  'lightSetup',
+  'toneMapping',
+  'layerSetup',
+  'aspectRatio',
+  'stageRev',
+]);
+
+function getNextPipelineType(type: NodeType): NodeType | null {
+  return (DIRECT_CONNECTIONS[type] ?? []).find((targetType) => targetType !== 'override') ?? null;
+}
+
+function getAllowedTargetNodeTypes(sourceNodeId: string, flowNodes: FlowNode[], flowEdges: FlowEdge[]): NodeType[] {
+  const edgeMaps = buildEdgeMaps(flowNodes, flowEdges);
+  const sourceNode = edgeMaps.nodesById.get(sourceNodeId);
+  if (!sourceNode) return [];
+
+  if (sourceNode.type !== 'override') {
+    return [...(DIRECT_CONNECTIONS[sourceNode.type] ?? [])];
+  }
+
   const queue = [sourceNodeId];
   const visited = new Set<string>();
+  const continuationTypes = new Set<NodeType>();
 
   while (queue.length > 0) {
-    const nodeId = queue.shift()!;
-    if (visited.has(nodeId)) continue;
+    const nodeId = queue.shift();
+    if (!nodeId || visited.has(nodeId)) continue;
     visited.add(nodeId);
 
-    for (const edge of incoming.get(nodeId) ?? []) {
-      const upstreamNode = nodesById.get(edge.source);
+    for (const edge of edgeMaps.incoming.get(nodeId) ?? []) {
+      const upstreamNode = edgeMaps.nodesById.get(edge.source);
       if (!upstreamNode) continue;
-      if (upstreamNode.type === 'override' || upstreamNode.type === 'group') {
+
+      if (upstreamNode.type === 'override') {
         queue.push(upstreamNode.id);
         continue;
       }
-      return NEXT_STAGE_BY_TYPE[upstreamNode.type] ?? null;
+
+      if (!OVERRIDABLE_SOURCE_TYPES.has(upstreamNode.type)) {
+        continue;
+      }
+
+      const nextType = getNextPipelineType(upstreamNode.type);
+      if (nextType) {
+        continuationTypes.add(nextType);
+      }
     }
   }
 
-  return null;
+  return continuationTypes.size === 1 ? [...continuationTypes] : [];
 }
 
 export function getSuggestedNextNodeTypes(
@@ -215,21 +243,7 @@ export function getSuggestedNextNodeTypes(
   flowEdges: FlowEdge[],
   sourceNodeId: string
 ): NodeType[] {
-  const edgeMaps = buildEdgeMaps(flowNodes, flowEdges);
-  const sourceNode = edgeMaps.nodesById.get(sourceNodeId);
-  if (!sourceNode) return [];
-
-  if (sourceNode.type === 'camera' || sourceNode.type === 'group') {
-    return ['group', 'lightSetup'];
-  }
-
-  if (sourceNode.type === 'override') {
-    const continuationType = getOverrideContinuationType(edgeMaps.nodesById, edgeMaps.incoming, sourceNodeId);
-    return continuationType ? [continuationType] : [];
-  }
-
-  const nextStageType = NEXT_STAGE_BY_TYPE[sourceNode.type];
-  return nextStageType ? [nextStageType] : [];
+  return getAllowedTargetNodeTypes(sourceNodeId, flowNodes, flowEdges);
 }
 
 export function getSuggestedExistingTargetNodes(

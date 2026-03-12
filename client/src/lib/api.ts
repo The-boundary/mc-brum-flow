@@ -1,5 +1,42 @@
 const BASE = '/api';
 
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  details?: Record<string, unknown>;
+
+  constructor(message: string, options?: { status?: number; code?: string; details?: Record<string, unknown> }) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = options?.status ?? 500;
+    this.code = options?.code;
+    this.details = options?.details;
+  }
+}
+
+function toApiError(body: unknown, status: number, fallbackMessage: string) {
+  const payload = body as { error?: unknown } | null;
+  const error = payload?.error;
+
+  if (error && typeof error === 'object') {
+    const details = error as Record<string, unknown>;
+    return new ApiError(
+      typeof details.message === 'string' ? details.message : fallbackMessage,
+      {
+        status,
+        code: typeof details.code === 'string' ? details.code : undefined,
+        details,
+      },
+    );
+  }
+
+  if (typeof error === 'string') {
+    return new ApiError(error, { status });
+  }
+
+  return new ApiError(fallbackMessage, { status });
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
     credentials: 'include',
@@ -8,7 +45,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error((body as any)?.error?.message || `API error: ${res.status}`);
+    throw toApiError(body, res.status, `API error: ${res.status}`);
   }
   let json: unknown;
   try {
@@ -17,7 +54,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     throw new Error(`API error: invalid JSON response (${res.status})`);
   }
   const data = json as Record<string, unknown>;
-  if (data.success === false) throw new Error((data.error as string) || 'Unknown error');
+  if (data.success === false) throw toApiError(json, res.status, 'Unknown error');
   if (data.data === undefined) throw new Error('API error: response missing data field');
   return data.data as T;
 }
