@@ -3,6 +3,7 @@ import * as api from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 import type { Scene, Camera, StudioDefault, NodeConfig, FlowNode, FlowEdge, NodeType, MaxSyncState } from '@shared/types';
 import { isValidConnection } from '@shared/types';
+import type { MaxHealthResult } from '@/lib/api';
 
 export interface ResolvedPath {
   pathKey: string;
@@ -13,6 +14,17 @@ export interface ResolvedPath {
   resolvedConfig: Record<string, unknown>;
   enabled: boolean;
   stageLabels: Partial<Record<'lightSetup' | 'toneMapping' | 'layerSetup' | 'aspectRatio' | 'stageRev' | 'deadline' | 'override', string>>;
+}
+
+export interface SyncLogEntry {
+  id: string;
+  timestamp: string;
+  status: 'success' | 'error' | 'syncing' | 'queued';
+  reason: string;
+  cameraName?: string;
+  pathKey?: string;
+  error?: string;
+  durationMs?: number;
 }
 
 interface FlowState {
@@ -33,6 +45,12 @@ interface FlowState {
   resolvedPaths: ResolvedPath[];
   pathCount: number;
   maxSyncState: MaxSyncState | null;
+
+  // Max connection
+  maxHealth: MaxHealthResult | null;
+
+  // Sync activity log
+  syncLog: SyncLogEntry[];
 
   // Loading
   loading: boolean;
@@ -61,11 +79,16 @@ interface FlowState {
   updateNodeConfig: (id: string, updates: { label?: string; delta?: Record<string, unknown> }) => Promise<NodeConfig | null>;
   deleteNodeConfig: (id: string) => Promise<void>;
   initSocket: () => void;
+  checkMaxHealth: () => Promise<void>;
+  pushToMax: (pathKey?: string, pathIndex?: number) => Promise<boolean>;
+  submitRender: (pathIndices: number[]) => Promise<boolean>;
+  addSyncLog: (entry: Omit<SyncLogEntry, 'id' | 'timestamp'>) => void;
 }
 
 let nextNodeId = 1;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let persistNeedsResolve = false;
+let syncLogCounter = 0;
 
 function genNodeId(): string {
   return `node_${Date.now()}_${nextNodeId++}`;
@@ -102,6 +125,8 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   resolvedPaths: [],
   pathCount: 0,
   maxSyncState: null,
+  maxHealth: null,
+  syncLog: [],
   loading: true,
   error: null,
 
@@ -534,8 +559,83 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     socket.on('max-sync:updated', (row: MaxSyncState) => {
       const { activeSceneId } = get();
       if (row.scene_id === activeSceneId) {
+        const prev = get().maxSyncState;
         set({ maxSyncState: row });
+        // Auto-log sync completions
+        if (prev?.status !== row.status && (row.status === 'success' || row.status === 'error')) {
+          get().addSyncLog({
+            status: row.status,
+            reason: row.last_reason || 'auto-sync',
+            cameraName: row.active_camera_name || undefined,
+            pathKey: row.active_path_key || undefined,
+            error: row.last_error || undefined,
+          });
+        }
       }
     });
+  },
+
+  checkMaxHealth: async () => {
+    try {
+      const health = await api.checkMaxHealth();
+      set({ maxHealth: health });
+    } catch (err) {
+      set({ maxHealth: { connected: false, error: err instanceof Error ? err.message : 'Check failed', host: '', port: 0 } });
+    }
+  },
+
+  pushToMax: async (pathKey, pathIndex) => {
+    const { activeSceneId } = get();
+    if (!activeSceneId) return false;
+    try {
+      const state = await api.pushToMax(activeSceneId, pathKey, pathIndex);
+      set({ maxSyncState: state });
+      get().addSyncLog({
+        status: state?.status === 'error' ? 'error' : 'success',
+        reason: 'manual-push',
+        cameraName: state?.active_camera_name,
+        pathKey: state?.active_path_key,
+        error: state?.last_error,
+      });
+      return true;
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Push to Max failed' });
+      get().addSyncLog({
+        status: 'error',
+        reason: 'manual-push',
+        error: err instanceof Error ? err.message : 'Push to Max failed',
+      });
+      return false;
+    }
+  },
+
+  submitRender: async (pathIndices) => {
+    const { activeSceneId } = get();
+    if (!activeSceneId) return false;
+    try {
+      const result = await api.submitRender(activeSceneId, pathIndices);
+      get().addSyncLog({
+        status: 'success',
+        reason: `deadline-submit:${result.submitted}jobs`,
+      });
+      return true;
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Render submission failed' });
+      get().addSyncLog({
+        status: 'error',
+        reason: 'deadline-submit',
+        error: err instanceof Error ? err.message : 'Render submission failed',
+      });
+      return false;
+    }
+  },
+
+  addSyncLog: (entry) => {
+    const log: SyncLogEntry = {
+      ...entry,
+      id: `log_${Date.now()}_${syncLogCounter++}`,
+      timestamp: new Date().toISOString(),
+    };
+    set((s) => ({ syncLog: [log, ...s.syncLog].slice(0, 50) }));
   },
 }));

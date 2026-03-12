@@ -60,6 +60,25 @@ export const saveFlowConfig = (data: any) =>
 export const fetchMaxSyncState = (sceneId: string) =>
   request<any | null>(`/max-sync-state?scene_id=${sceneId}`);
 
+export interface MaxHealthResult {
+  connected: boolean;
+  latencyMs?: number;
+  error?: string;
+  host: string;
+  port: number;
+}
+
+// Max MCP Health
+export const checkMaxHealth = () => request<MaxHealthResult>('/max-health');
+
+// Push to Max
+export const pushToMax = (sceneId: string, pathKey?: string, pathIndex?: number) =>
+  request<any>('/push-to-max', { method: 'POST', body: JSON.stringify({ scene_id: sceneId, path_key: pathKey, path_index: pathIndex }) });
+
+// Submit Render
+export const submitRender = (sceneId: string, pathIndices: number[]) =>
+  request<{ submitted: number; jobs: { jobId: string }[] }>('/submit-render', { method: 'POST', body: JSON.stringify({ scene_id: sceneId, path_indices: pathIndices }) });
+
 // Path Resolution
 export const resolvePaths = (sceneId: string) =>
   request<{ paths: any[]; count: number }>('/resolve-paths', { method: 'POST', body: JSON.stringify({ scene_id: sceneId }) });

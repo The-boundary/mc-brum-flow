@@ -21,7 +21,7 @@ import '@xyflow/react/dist/style.css';
 import {
   Camera, FolderOpen, Sun, Contrast, Layers,
   RectangleHorizontal, Gauge, Server, AlertTriangle,
-  FileOutput,
+  FileOutput, Keyboard,
 } from 'lucide-react';
 
 import { useFlowStore } from '@/stores/flowStore';
@@ -84,34 +84,32 @@ export function NodeFlowView() {
   const {
     flowNodes, flowEdges: storeEdges, selectedNodeId, viewport,
     selectNode, addNode, addEdge: storeAddEdge, removeNode, removeEdge,
-    updateNodePosition, applyNodeLayout, updateViewport, saveGraph,
+    updateNodePosition, applyNodeLayout, updateViewport, saveGraph, resolvePaths,
   } = useFlowStore();
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [autoSuggest, setAutoSuggest] = useState<AutoSuggestState | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingConnectionRef = useRef<PendingConnectionState | null>(null);
   const autoSuggestJustSetRef = useRef(false);
   const reactFlowInstance = useReactFlow();
+
   const semantics = useMemo(
     () => getFlowSemantics(flowNodes, storeEdges, selectedNodeId),
     [flowNodes, selectedNodeId, storeEdges]
   );
+
   const handleLayout = useMemo(
     () => getFlowHandleLayout(flowNodes, storeEdges),
     [flowNodes, storeEdges]
   );
+
   const hasCameraSelection = semantics.selectedCameraNodeId !== null;
   const existingAutoSuggestTargets = useMemo(() => {
-    if (!autoSuggest) {
-      return [];
-    }
-
+    if (!autoSuggest) return [];
     return getSuggestedExistingTargetNodes(
-      flowNodes,
-      storeEdges,
-      autoSuggest.sourceNodeId,
-      autoSuggest.validTypes
+      flowNodes, storeEdges, autoSuggest.sourceNodeId, autoSuggest.validTypes
     );
   }, [autoSuggest, flowNodes, storeEdges]);
 
@@ -197,11 +195,7 @@ export function NodeFlowView() {
       pendingConnectionRef.current = null;
       return;
     }
-
-    pendingConnectionRef.current = {
-      sourceNodeId: params.nodeId,
-    };
-
+    pendingConnectionRef.current = { sourceNodeId: params.nodeId };
     setContextMenu(null);
     setAutoSuggest(null);
   }, []);
@@ -242,9 +236,6 @@ export function NodeFlowView() {
     const clientY = 'clientY' in event ? event.clientY : event.touches?.[0]?.clientY ?? 0;
     const flowPos = reactFlowInstance.screenToFlowPosition({ x: clientX, y: clientY });
 
-    // Defer showing the dropdown until after the click event from mouseup
-    // has fully bubbled — otherwise onPaneClick and the window click
-    // listener immediately clear it in the same event loop tick
     autoSuggestJustSetRef.current = true;
     setTimeout(() => {
       autoSuggestJustSetRef.current = false;
@@ -292,21 +283,48 @@ export function NodeFlowView() {
     return () => window.removeEventListener('click', handler);
   }, [contextMenu, autoSuggest]);
 
-  // Delete selected node on Delete key
+  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Skip if user is typing in an input
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      // Delete/Backspace - delete selected node
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId) {
+        e.preventDefault();
         removeNode(selectedNodeId);
         scheduleSave();
+        return;
+      }
+
+      // Ctrl+S - save now
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        void saveGraph().then(() => resolvePaths());
+        return;
+      }
+
+      // Escape - deselect and close menus
+      if (e.key === 'Escape') {
+        selectNode(null);
+        setContextMenu(null);
+        setAutoSuggest(null);
+        return;
+      }
+
+      // ? - show keyboard shortcuts
+      if (e.key === '?') {
+        setShowShortcuts((v) => !v);
+        return;
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedNodeId, removeNode, scheduleSave]);
+  }, [selectedNodeId, removeNode, scheduleSave, saveGraph, resolvePaths, selectNode]);
 
   const handleAddNode = useCallback((type: NodeType, x: number, y: number, sourceId?: string) => {
     addNode(type, { x, y });
-    // If adding from auto-suggest, also connect
     if (sourceId) {
       const newNodes = useFlowStore.getState().flowNodes;
       const newest = newNodes[newNodes.length - 1];
@@ -328,25 +346,20 @@ export function NodeFlowView() {
     setAutoSuggest(null);
   }, [scheduleSave, selectNode, storeAddEdge]);
 
+  // Auto-layout using dagre
   useEffect(() => {
-    if (!autoLayoutNonce || flowNodes.length === 0) {
-      return;
-    }
+    if (!autoLayoutNonce || flowNodes.length === 0) return;
 
     const nextPositions = getAutoLayoutPositions(flowNodes, storeEdges);
     applyNodeLayout(nextPositions);
-    reactFlowInstance.fitView({ duration: 220, padding: 0.18 });
+    reactFlowInstance.fitView({ duration: 280, padding: 0.15 });
   }, [applyNodeLayout, autoLayoutNonce, flowNodes, reactFlowInstance, storeEdges]);
 
   useEffect(() => {
-    if (!fitViewNonce || flowNodes.length === 0) {
-      return;
-    }
-
+    if (!fitViewNonce || flowNodes.length === 0) return;
     reactFlowInstance.fitView({ duration: 220, padding: 0.18 });
   }, [fitViewNonce, flowNodes.length, reactFlowInstance]);
 
-  // All node types for context menu
   const allNodeTypes = Object.entries(NODE_TYPE_META);
 
   return (
@@ -379,7 +392,20 @@ export function NodeFlowView() {
         <Controls className="!bg-surface-200 !border-border !rounded-lg [&>button]:!bg-surface-300 [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-surface-400" />
         <MiniMap
           className="!bg-surface-100 !border-border !rounded-lg"
-          nodeColor="hsl(185 63% 60%)"
+          nodeColor={(node) => {
+            const type = node.type as NodeType;
+            if (type === 'camera') return '#34d399';
+            if (type === 'output') return '#e879f9';
+            if (type === 'override') return '#f87171';
+            if (type === 'group') return '#fb923c';
+            if (type === 'lightSetup') return '#fbbf24';
+            if (type === 'toneMapping') return '#60a5fa';
+            if (type === 'layerSetup') return '#22d3ee';
+            if (type === 'aspectRatio') return '#2dd4bf';
+            if (type === 'stageRev') return '#4ade80';
+            if (type === 'deadline') return '#c084fc';
+            return 'hsl(185 63% 60%)';
+          }}
           maskColor="rgba(0,0,0,0.5)"
         />
       </ReactFlow>
@@ -451,8 +477,53 @@ export function NodeFlowView() {
         </div>
       )}
 
-      <div className="pointer-events-none absolute bottom-3 left-3 rounded bg-surface-100/90 border border-border px-2 py-1 text-[10px] text-fg-dim">
-        Double-click an edge to delete it. `Shift`/`Ctrl`/`Cmd`-click also deletes.
+      {/* Keyboard shortcuts overlay */}
+      {showShortcuts && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setShowShortcuts(false)}
+        >
+          <div
+            className="bg-surface-200 border border-border rounded-xl shadow-2xl p-5 max-w-sm w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+              <Keyboard className="w-4 h-4 text-brand" />
+              Keyboard Shortcuts
+            </h3>
+            <div className="space-y-1.5 text-xs">
+              {[
+                ['Delete / Backspace', 'Remove selected node'],
+                ['Ctrl + S', 'Save graph now'],
+                ['Escape', 'Deselect & close menus'],
+                ['Double-click edge', 'Delete edge'],
+                ['Shift + click edge', 'Delete edge'],
+                ['Right-click canvas', 'Add node menu'],
+                ['Drag from handle', 'Create connection'],
+                ['Drop on empty', 'Add & connect node'],
+                ['?', 'Toggle this help'],
+              ].map(([key, desc]) => (
+                <div key={key} className="flex items-center justify-between gap-4">
+                  <kbd className="px-1.5 py-0.5 rounded bg-surface-300 border border-border text-[10px] font-mono text-foreground">{key}</kbd>
+                  <span className="text-fg-muted">{desc}</span>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowShortcuts(false)}
+              className="mt-4 w-full rounded-lg bg-brand px-4 py-2 text-xs font-medium text-background hover:bg-brand-500 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom-left help hint */}
+      <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-3">
+        <div className="rounded bg-surface-100/90 border border-border px-2 py-1 text-[10px] text-fg-dim">
+          <span className="opacity-60">Drag</span> connect · <span className="opacity-60">Shift-click</span> delete edge · <span className="opacity-60">?</span> shortcuts
+        </div>
       </div>
     </div>
   );

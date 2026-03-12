@@ -1,10 +1,12 @@
 import type { FlowEdge, FlowNode } from '@shared/types';
 
-interface FlowSemantics {
+export interface FlowSemantics {
   edgeCameraCounts: Map<string, number>;
   highlightedEdgeIds: Set<string>;
   highlightedNodeIds: Set<string>;
   selectedCameraNodeId: string | null;
+  downstreamNodeIds: Set<string>;
+  upstreamNodeIds: Set<string>;
 }
 
 function pushCameraToSet(map: Map<string, Set<string>>, key: string, cameraNodeId: string) {
@@ -23,16 +25,16 @@ export function getFlowSemantics(
 ): FlowSemantics {
   const nodesById = new Map(flowNodes.map((node) => [node.id, node]));
   const outgoingEdges = new Map<string, FlowEdge[]>();
+  const incomingEdges = new Map<string, FlowEdge[]>();
 
   for (const edge of flowEdges) {
-    const bucket = outgoingEdges.get(edge.source);
-    if (bucket) {
-      bucket.push(edge);
-      continue;
-    }
-    outgoingEdges.set(edge.source, [edge]);
+    if (!outgoingEdges.has(edge.source)) outgoingEdges.set(edge.source, []);
+    if (!incomingEdges.has(edge.target)) incomingEdges.set(edge.target, []);
+    outgoingEdges.get(edge.source)!.push(edge);
+    incomingEdges.get(edge.target)!.push(edge);
   }
 
+  // Camera coverage
   const nodeCameraIds = new Map<string, Set<string>>();
   const edgeCameraIds = new Map<string, Set<string>>();
   const cameraNodes = flowNodes.filter((node) => node.type === 'camera');
@@ -42,9 +44,8 @@ export function getFlowSemantics(
     const visited = new Set<string>();
 
     while (queue.length > 0) {
-      const nodeId = queue.shift();
-      if (!nodeId || visited.has(nodeId)) continue;
-
+      const nodeId = queue.shift()!;
+      if (visited.has(nodeId)) continue;
       visited.add(nodeId);
       pushCameraToSet(nodeCameraIds, nodeId, cameraNode.id);
 
@@ -57,6 +58,39 @@ export function getFlowSemantics(
     }
   }
 
+  // Downstream traversal from selected node
+  const downstreamNodeIds = new Set<string>();
+  const upstreamNodeIds = new Set<string>();
+
+  if (selectedNodeId) {
+    // Downstream BFS
+    const dq = [selectedNodeId];
+    const dv = new Set<string>();
+    while (dq.length > 0) {
+      const nid = dq.shift()!;
+      if (dv.has(nid)) continue;
+      dv.add(nid);
+      if (nid !== selectedNodeId) downstreamNodeIds.add(nid);
+      for (const edge of outgoingEdges.get(nid) ?? []) {
+        if (!dv.has(edge.target)) dq.push(edge.target);
+      }
+    }
+
+    // Upstream BFS
+    const uq = [selectedNodeId];
+    const uv = new Set<string>();
+    while (uq.length > 0) {
+      const nid = uq.shift()!;
+      if (uv.has(nid)) continue;
+      uv.add(nid);
+      if (nid !== selectedNodeId) upstreamNodeIds.add(nid);
+      for (const edge of incomingEdges.get(nid) ?? []) {
+        if (!uv.has(edge.source)) uq.push(edge.source);
+      }
+    }
+  }
+
+  // Camera-based highlighting (when a camera node is selected)
   const selectedNode = selectedNodeId ? nodesById.get(selectedNodeId) : null;
   const selectedCameraNodeId = selectedNode?.type === 'camera' ? selectedNode.id : null;
   const highlightedNodeIds = new Set<string>();
@@ -68,6 +102,17 @@ export function getFlowSemantics(
     }
     for (const [edgeId, cameraIds] of edgeCameraIds.entries()) {
       if (cameraIds.has(selectedCameraNodeId)) highlightedEdgeIds.add(edgeId);
+    }
+  } else if (selectedNodeId) {
+    // Highlight the connected path from any selected node
+    for (const nid of downstreamNodeIds) highlightedNodeIds.add(nid);
+    for (const nid of upstreamNodeIds) highlightedNodeIds.add(nid);
+    highlightedNodeIds.add(selectedNodeId);
+
+    for (const edge of flowEdges) {
+      if (highlightedNodeIds.has(edge.source) && highlightedNodeIds.has(edge.target)) {
+        highlightedEdgeIds.add(edge.id);
+      }
     }
   }
 
@@ -81,5 +126,7 @@ export function getFlowSemantics(
     highlightedEdgeIds,
     highlightedNodeIds,
     selectedCameraNodeId,
+    downstreamNodeIds,
+    upstreamNodeIds,
   };
 }

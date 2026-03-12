@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { useFlowStore, type ResolvedPath } from '@/stores/flowStore';
-import { ToggleLeft, ToggleRight, FileOutput } from 'lucide-react';
+import { ToggleLeft, ToggleRight, FileOutput, Send, Upload, Loader2 } from 'lucide-react';
 
 export function OutputPreviewPanel() {
   const resolvedPaths = useFlowStore((s) => s.resolvedPaths);
@@ -7,8 +8,36 @@ export function OutputPreviewPanel() {
   const selectNode = useFlowStore((s) => s.selectNode);
   const setResolvedPathEnabled = useFlowStore((s) => s.setResolvedPathEnabled);
   const setAllResolvedPathsEnabled = useFlowStore((s) => s.setAllResolvedPathsEnabled);
+  const pushToMax = useFlowStore((s) => s.pushToMax);
+  const submitRender = useFlowStore((s) => s.submitRender);
+  const syncLog = useFlowStore((s) => s.syncLog);
 
   const enabledCount = resolvedPaths.filter((p) => p.enabled).length;
+  const enabledIndices = resolvedPaths
+    .map((p, i) => (p.enabled ? i : -1))
+    .filter((i) => i >= 0);
+
+  const [pushing, setPushing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handlePushToMax = async (pathKey: string) => {
+    setPushing(true);
+    try {
+      await pushToMax(pathKey);
+    } finally {
+      setPushing(false);
+    }
+  };
+
+  const handleSubmitRender = async () => {
+    if (enabledIndices.length === 0) return;
+    setSubmitting(true);
+    try {
+      await submitRender(enabledIndices);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="h-full flex flex-col bg-surface-100">
@@ -34,6 +63,16 @@ export function OutputPreviewPanel() {
           >
             Disable All
           </button>
+          {enabledCount > 0 && (
+            <button
+              onClick={handleSubmitRender}
+              disabled={submitting}
+              className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-brand/15 text-brand hover:bg-brand/25 transition disabled:opacity-50"
+            >
+              {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+              Submit {enabledCount} to Deadline
+            </button>
+          )}
         </div>
       </div>
 
@@ -50,6 +89,7 @@ export function OutputPreviewPanel() {
                 <th className="text-left px-3 py-1.5 text-[10px] text-fg-dim font-medium w-10">On</th>
                 <th className="text-left px-3 py-1.5 text-[10px] text-fg-dim font-medium">Filename</th>
                 <th className="text-left px-3 py-1.5 text-[10px] text-fg-dim font-medium w-28">Camera</th>
+                <th className="text-right px-3 py-1.5 text-[10px] text-fg-dim font-medium w-16">Push</th>
               </tr>
             </thead>
             <tbody>
@@ -59,20 +99,48 @@ export function OutputPreviewPanel() {
                   path={path}
                   onSelect={() => selectNode(path.outputNodeId)}
                   onToggle={() => void setResolvedPathEnabled(path.pathKey, path.outputNodeId, !path.enabled)}
+                  onPush={() => handlePushToMax(path.pathKey)}
+                  pushing={pushing}
                 />
               ))}
             </tbody>
           </table>
         )}
       </div>
+
+      {/* Sync activity log */}
+      {syncLog.length > 0 && (
+        <div className="border-t border-border shrink-0 max-h-[120px] overflow-y-auto">
+          <div className="px-3 py-1 text-[10px] text-fg-dim uppercase tracking-wider sticky top-0 bg-surface-100">Activity</div>
+          {syncLog.slice(0, 10).map((entry) => (
+            <div
+              key={entry.id}
+              className="flex items-center gap-2 px-3 py-1 text-[10px] border-t border-border/30"
+            >
+              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                entry.status === 'success' ? 'bg-emerald-400' :
+                entry.status === 'error' ? 'bg-red-400' :
+                entry.status === 'syncing' ? 'bg-amber-400' : 'bg-fg-dim'
+              }`} />
+              <span className="text-fg-muted truncate flex-1">
+                {entry.reason}
+                {entry.cameraName && ` · ${entry.cameraName}`}
+              </span>
+              <span className="text-fg-dim shrink-0">
+                {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 function OutputRow({
-  path, onSelect, onToggle,
+  path, onSelect, onToggle, onPush, pushing,
 }: {
-  path: ResolvedPath; onSelect: () => void; onToggle: () => void;
+  path: ResolvedPath; onSelect: () => void; onToggle: () => void; onPush: () => void; pushing: boolean;
 }) {
   return (
     <tr
@@ -93,6 +161,18 @@ function OutputRow({
       </td>
       <td className="px-3 py-1.5 text-fg-muted" onClick={onSelect}>
         {path.cameraName || '—'}
+      </td>
+      <td className="px-3 py-1.5 text-right">
+        {path.enabled && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onPush(); }}
+            disabled={pushing}
+            className="p-0.5 rounded text-fg-dim hover:text-brand hover:bg-brand/10 transition disabled:opacity-50"
+            title="Push to 3ds Max"
+          >
+            <Upload className="w-3.5 h-3.5" />
+          </button>
+        )}
       </td>
     </tr>
   );

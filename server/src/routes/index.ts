@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { submitDeadlineJob } from '../services/deadline.js';
 import { resolveFlowPaths } from '../services/flowResolver.js';
 import { config } from '../config.js';
+import { pingMaxMcp } from '../services/max-mcp-client.js';
 import {
   getMaxSyncState,
   queueAllScenesSync,
@@ -67,6 +68,20 @@ router.get('/health', async (_req: Request, res: Response, next: NextFunction) =
 
 // All routes below require auth
 router.use(requireAuth);
+
+// ── Max MCP Health ──
+
+router.get('/max-health', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const start = performance.now();
+    await pingMaxMcp(5_000, { host: config.maxHost, port: config.maxPort });
+    const latencyMs = Math.round(performance.now() - start);
+    res.json({ success: true, data: { connected: true, latencyMs, host: config.maxHost, port: config.maxPort } });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Connection failed';
+    res.json({ success: true, data: { connected: false, error: message, host: config.maxHost, port: config.maxPort } });
+  }
+});
 
 // ── Scenes ──
 
