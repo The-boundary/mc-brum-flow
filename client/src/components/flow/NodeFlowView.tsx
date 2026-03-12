@@ -91,6 +91,7 @@ export function NodeFlowView() {
   const [autoSuggest, setAutoSuggest] = useState<AutoSuggestState | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingConnectionRef = useRef<PendingConnectionState | null>(null);
+  const autoSuggestJustSetRef = useRef(false);
   const reactFlowInstance = useReactFlow();
   const semantics = useMemo(
     () => getFlowSemantics(flowNodes, storeEdges, selectedNodeId),
@@ -192,7 +193,6 @@ export function NodeFlowView() {
   }, [storeAddEdge, scheduleSave]);
 
   const onConnectStart: OnConnectStart = useCallback((_event, params) => {
-    console.log('[connect-debug] onConnectStart', { nodeId: params.nodeId, handleType: params.handleType, handleId: params.handleId });
     if (!params.nodeId) {
       pendingConnectionRef.current = null;
       return;
@@ -225,34 +225,28 @@ export function NodeFlowView() {
     const pendingConnection = pendingConnectionRef.current;
     pendingConnectionRef.current = null;
 
-    console.log('[connect-debug] onConnectEnd', {
-      hasPending: !!pendingConnection,
-      sourceNodeId: pendingConnection?.sourceNodeId,
-      isValid: connectionState?.isValid,
-      toNode: connectionState?.toNode?.id,
-      toHandle: connectionState?.toHandle?.id,
-      targetClass: (event.target as Element)?.className,
-    });
-
-    if (!pendingConnection) { console.log('[connect-debug] BAIL: no pendingConnection'); return; }
-    if (connectionState?.isValid || connectionState?.toNode || connectionState?.toHandle) { console.log('[connect-debug] BAIL: connection was valid/had target'); return; }
+    if (!pendingConnection) return;
+    if (connectionState?.isValid || connectionState?.toNode || connectionState?.toHandle) return;
 
     const target = event.target as Element | null;
     const droppedOnInteractiveElement = Boolean(
       target?.closest('.react-flow__node, .react-flow__handle, .react-flow__controls, .react-flow__minimap')
     );
 
-    if (droppedOnInteractiveElement) { console.log('[connect-debug] BAIL: dropped on interactive element'); return; }
+    if (droppedOnInteractiveElement) return;
 
     const validTypes = getSuggestedNextNodeTypes(flowNodes, storeEdges, pendingConnection.sourceNodeId);
-    console.log('[connect-debug] validTypes for', pendingConnection.sourceNodeId, ':', validTypes);
-    if (validTypes.length === 0) { console.log('[connect-debug] BAIL: no valid types'); return; }
+    if (validTypes.length === 0) return;
 
     const clientX = 'clientX' in event ? event.clientX : event.touches?.[0]?.clientX ?? 0;
     const clientY = 'clientY' in event ? event.clientY : event.touches?.[0]?.clientY ?? 0;
     const flowPos = reactFlowInstance.screenToFlowPosition({ x: clientX, y: clientY });
 
-    console.log('[connect-debug] SHOWING auto-suggest at', { clientX, clientY, validTypes });
+    // Mark that auto-suggest was just opened — prevents the pane click
+    // that fires on the same mouseup from immediately clearing it
+    autoSuggestJustSetRef.current = true;
+    requestAnimationFrame(() => { autoSuggestJustSetRef.current = false; });
+
     setAutoSuggest({
       x: clientX + 8,
       y: clientY + 8,
@@ -267,7 +261,11 @@ export function NodeFlowView() {
   const onPaneClick = useCallback(() => {
     selectNode(null);
     setContextMenu(null);
-    setAutoSuggest(null);
+    // Don't clear auto-suggest if it was just opened by onConnectEnd
+    // (the mouseup that ends a connection drag also fires a pane click)
+    if (!autoSuggestJustSetRef.current) {
+      setAutoSuggest(null);
+    }
   }, [selectNode]);
 
   // Right-click context menu
