@@ -54,7 +54,7 @@ export default defineConfig(({ mode }) => {
           manualChunks(id) {
             if (!id.includes('node_modules')) return;
 
-            if (id.includes('@xyflow') || id.includes('dagre') || id.includes('d3-')) {
+            if (id.includes('@xyflow') || id.includes('@dagrejs') || id.includes('dagre') || id.includes('d3-')) {
               return 'graph-vendor';
             }
 

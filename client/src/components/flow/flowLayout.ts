@@ -1,4 +1,4 @@
-import dagre from 'dagre';
+import dagre from '@dagrejs/dagre';
 import { pipelineIndex, type FlowEdge, type FlowNode, type NodeType } from '@shared/types';
 
 export interface NodeHandleLayout {
