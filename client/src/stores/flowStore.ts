@@ -416,21 +416,48 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     scheduleStoreSave(get().saveGraph, get().resolvePaths, true);
   },
 
-  addEdge: (source, target, _sourceHandle, _targetHandle) => {
+  addEdge: (source, target, sourceHandle, targetHandle) => {
     const { flowNodes, flowEdges } = get();
     const sourceNode = flowNodes.find((n) => n.id === source);
     const targetNode = flowNodes.find((n) => n.id === target);
     if (!sourceNode || !targetNode) return false;
     if (!isValidFlowConnection(source, target, flowNodes, flowEdges)) return false;
-    // Prevent duplicate edges (same source → target pair)
-    if (flowEdges.some((e) => e.source === source && e.target === target)) {
+
+    // Normalize handles for comparison — treat null/undefined/missing consistently
+    const sh = sourceHandle ?? undefined;
+    const th = targetHandle ?? undefined;
+
+    // Prevent duplicate edges: same source, target, AND handle pair.
+    if (flowEdges.some((e) =>
+      e.source === source &&
+      e.target === target &&
+      (e.source_handle ?? undefined) === sh &&
+      (e.target_handle ?? undefined) === th
+    )) {
       return false;
     }
 
+    // Also prevent creating a no-handle edge when a handle-specific edge
+    // already exists between the same source/target (and vice versa)
+    if (!sh && !th && flowEdges.some((e) => e.source === source && e.target === target)) {
+      return false;
+    }
+
+    // Build unique edge ID including handle info when present
+    const handleSuffix = sh || th
+      ? `_${sh ?? 'any'}_${th ?? 'any'}`
+      : '';
+    const baseId = `edge_${source}_${target}${handleSuffix}`;
+    // Ensure uniqueness even if handle suffix collides (unlikely but safe)
+    const idExists = flowEdges.some((e) => e.id === baseId);
+    const edgeId = idExists ? `${baseId}_${Date.now()}` : baseId;
+
     const edge: FlowEdge = {
-      id: `edge_${source}_${target}`,
+      id: edgeId,
       source,
       target,
+      ...(sh && { source_handle: sh }),
+      ...(th && { target_handle: th }),
     };
     set((s) => ({ flowEdges: [...s.flowEdges, edge] }));
     scheduleStoreSave(get().saveGraph, get().resolvePaths, true);
