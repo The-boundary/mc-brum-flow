@@ -156,18 +156,10 @@ const PARAMETER_GROUP_LABELS: Record<string, string> = {
 const NODE_PARAMETER_GROUPS: Partial<Record<NodeType, string[]>> = {
   lightSetup: ['environment'],
   toneMapping: ['tone_mapping'],
+  layerSetup: ['layers'],
   aspectRatio: ['scene_output'],
   stageRev: ['scene_output', 'corona_renderer'],
-  override: [
-    'corona_renderer',
-    'tone_mapping',
-    'scene_output',
-    'environment',
-    'color_management',
-    'physical_camera',
-    'free_camera',
-    'corona_camera_mod',
-  ],
+  // Override uses the upstream node's parameter groups (resolved dynamically)
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -512,12 +504,43 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
   const node = useFlowStore((state) => state.flowNodes.find((entry) => entry.id === nodeId));
   const nodeConfigs = useFlowStore((state) => state.nodeConfigs);
   const studioDefaults = useFlowStore((state) => state.studioDefaults);
+  const flowEdges = useFlowStore((state) => state.flowEdges);
+  const flowNodes = useFlowStore((state) => state.flowNodes);
   const assignNodeConfig = useFlowStore((state) => state.assignNodeConfig);
   const createNodeConfig = useFlowStore((state) => state.createNodeConfig);
   const updateNodeConfig = useFlowStore((state) => state.updateNodeConfig);
   const updateNodeLabel = useFlowStore((state) => state.updateNodeLabel);
   const nodeType = node?.type ?? 'override';
-  const parameterGroupKeys = NODE_PARAMETER_GROUPS[nodeType] ?? [];
+
+  // For override nodes, determine the upstream node type to scope which settings are editable
+  const upstreamNodeType = useMemo(() => {
+    if (nodeType !== 'override') return null;
+    const incomingEdges = flowEdges.filter((e) => e.target === nodeId);
+    if (incomingEdges.length === 0) return null;
+    // Find the direct upstream node (should be exactly one for override)
+    const upstreamNode = flowNodes.find((n) => n.id === incomingEdges[0].source);
+    if (!upstreamNode) return null;
+    // If upstream is also an override, walk up to find the original processing node
+    if (upstreamNode.type === 'override') {
+      const visited = new Set<string>();
+      let current = upstreamNode;
+      while (current.type === 'override' && !visited.has(current.id)) {
+        visited.add(current.id);
+        const parentEdge = flowEdges.find((e) => e.target === current.id);
+        if (!parentEdge) return null;
+        const parent = flowNodes.find((n) => n.id === parentEdge.source);
+        if (!parent) return null;
+        current = parent;
+      }
+      return current.type === 'override' ? null : current.type;
+    }
+    return upstreamNode.type;
+  }, [nodeType, nodeId, flowEdges, flowNodes]);
+
+  // Override nodes use the upstream node's parameter groups; unconnected overrides show nothing
+  const parameterGroupKeys = nodeType === 'override'
+    ? (upstreamNodeType ? (NODE_PARAMETER_GROUPS[upstreamNodeType] ?? []) : [])
+    : (NODE_PARAMETER_GROUPS[nodeType] ?? []);
   const [settingsFilter, setSettingsFilter] = useState('');
 
   const configsForType = useMemo(
@@ -553,9 +576,7 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
     if (nodeType === 'toneMapping') {
       return TONE_MAPPING_FIELDS;
     }
-    if (nodeType === 'stageRev') {
-      return STAGE_REV_FIELDS;
-    }
+    // stageRev: no editable fields — use override nodes to change settings
     return [];
   }, [nodeType]);
   const currentStageRevValue = useMemo(() => {
@@ -673,29 +694,50 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
         />
       </Section>
 
-      <Section title="Preset">
-        <div className="space-y-2">
-          <select
-            value={node.config_id ?? ''}
-            onChange={(event) => {
-              void handlePresetChange(event.target.value);
-            }}
-            className="w-full rounded border border-border bg-surface-300 px-2 py-1.5 text-xs text-foreground focus:border-brand focus:outline-none"
-          >
-            <option value="">No preset assigned</option>
-            {configsForType.map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {entry.label}
-              </option>
-            ))}
-          </select>
-          <div className="text-[10px] text-fg-dim">
-            {config
-              ? `${deltaEntries.length} override${deltaEntries.length === 1 ? '' : 's'} from studio defaults`
-              : 'Assign or create a preset to make this node editable.'}
+      {/* Override nodes don't have presets */}
+      {node.type === 'override' && !upstreamNodeType && (
+        <Section title="Status">
+          <div className="flex items-center gap-2 rounded border border-border/40 bg-surface-200/40 p-2">
+            <AlertTriangle className="h-3.5 w-3.5 text-fg-dim" />
+            <span className="text-xs text-fg-dim">Connect to a processing node to configure overrides.</span>
           </div>
-        </div>
-      </Section>
+        </Section>
+      )}
+
+      {node.type === 'override' && upstreamNodeType && (
+        <Section title="Overriding">
+          <div className="text-[10px] text-fg-dim">
+            Overriding {NODE_TYPE_LABELS[upstreamNodeType]?.label ?? upstreamNodeType} settings
+            {deltaEntries.length > 0 && ` — ${deltaEntries.length} override${deltaEntries.length === 1 ? '' : 's'}`}
+          </div>
+        </Section>
+      )}
+
+      {node.type !== 'override' && (
+        <Section title="Preset">
+          <div className="space-y-2">
+            <select
+              value={node.config_id ?? ''}
+              onChange={(event) => {
+                void handlePresetChange(event.target.value);
+              }}
+              className="w-full rounded border border-border bg-surface-300 px-2 py-1.5 text-xs text-foreground focus:border-brand focus:outline-none"
+            >
+              <option value="">No preset assigned</option>
+              {configsForType.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.label}
+                </option>
+              ))}
+            </select>
+            <div className="text-[10px] text-fg-dim">
+              {config
+                ? `${deltaEntries.length} override${deltaEntries.length === 1 ? '' : 's'} from studio defaults`
+                : 'Assign or create a preset to make this node editable.'}
+            </div>
+          </div>
+        </Section>
+      )}
 
       {node.type === 'stageRev' && (
         <Section title="Standard Revs">
@@ -756,7 +798,37 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
         </Section>
       )}
 
-      {parameterGroups.length > 0 && (
+      {/* Layer setup: show layers from the assigned config */}
+      {node.type === 'layerSetup' && config && Array.isArray(delta.layers) && (delta.layers as string[]).length > 0 && (
+        <Section title="Layers">
+          <div className="space-y-1">
+            {(delta.layers as string[]).map((layer) => (
+              <div key={layer} className="flex items-center gap-2 rounded border border-border/30 bg-surface-200/40 px-2 py-1">
+                <Layers className="h-3 w-3 text-cyan-400 shrink-0" />
+                <span className="text-xs text-foreground">{layer}</span>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {/* stageRev: show current longest edge value read-only */}
+      {node.type === 'stageRev' && config && (
+        <Section title="Resolution">
+          <div className="flex items-center justify-between rounded border border-border/30 bg-surface-200/40 px-2 py-1.5">
+            <span className="text-xs text-fg-dim">Longest Edge</span>
+            <span className="text-xs font-medium text-foreground font-mono">
+              {typeof delta.longest_edge === 'number' ? delta.longest_edge : '—'}
+            </span>
+          </div>
+          <div className="mt-1 text-[10px] text-fg-dim">
+            Use an Override node to change render settings.
+          </div>
+        </Section>
+      )}
+
+      {/* All Settings: shown for override nodes and editable processing nodes (not stageRev, not deadline) */}
+      {node.type !== 'stageRev' && node.type !== 'deadline' && parameterGroups.length > 0 && (
         <Section title="All Settings">
           <div className="space-y-3">
             <input
@@ -804,41 +876,36 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
         </Section>
       )}
 
-      <Section title="Overrides">
-        {!config && deltaEntries.length === 0 && (
-          <div className="text-[10px] text-fg-dim">No preset assigned yet.</div>
-        )}
-        {config && deltaEntries.length === 0 && (
-          <div className="text-[10px] text-fg-dim">Using studio defaults with no overrides.</div>
-        )}
-        {deltaEntries.map(([key, value]) => {
-          const definition = parameterDefinitions.find((entry) => entry.key === key);
-          const isOverridden = definition ? !areValuesEqual(definition.defaultValue, value) : true;
-          return (
-            <div key={key} className="flex items-center justify-between border-b border-border/30 py-1">
-              <div className="flex items-center gap-2">
-                <span className="w-32 truncate text-[11px] text-fg-dim">
-                  {definition?.label ?? key}
-                </span>
-                <span className={`text-xs ${isOverridden ? 'font-medium text-foreground' : 'text-fg-dim'}`}>
-                  {typeof value === 'boolean' ? (value ? 'true' : 'false') : formatValue(value)}
-                </span>
+      {/* Overrides summary: shown for non-stageRev, non-override nodes with a config */}
+      {node.type !== 'stageRev' && node.type !== 'override' && (
+        <Section title="Overrides">
+          {!config && deltaEntries.length === 0 && (
+            <div className="text-[10px] text-fg-dim">No preset assigned yet.</div>
+          )}
+          {config && deltaEntries.length === 0 && (
+            <div className="text-[10px] text-fg-dim">Using studio defaults with no overrides.</div>
+          )}
+          {deltaEntries.map(([key, value]) => {
+            const definition = parameterDefinitions.find((entry) => entry.key === key);
+            const isOverridden = definition ? !areValuesEqual(definition.defaultValue, value) : true;
+            return (
+              <div key={key} className="flex items-center justify-between border-b border-border/30 py-1">
+                <div className="flex items-center gap-2">
+                  <span className="w-32 truncate text-[11px] text-fg-dim">
+                    {definition?.label ?? key}
+                  </span>
+                  <span className={`text-xs ${isOverridden ? 'font-medium text-foreground' : 'text-fg-dim'}`}>
+                    {typeof value === 'boolean' ? (value ? 'true' : 'false') : formatValue(value)}
+                  </span>
+                </div>
+                {isOverridden && definition && (
+                  <span className="text-[9px] text-fg-dim" title={`Default: ${formatValue(definition.defaultValue)}`}>
+                    <RotateCcw className="inline h-3 w-3" />
+                  </span>
+                )}
               </div>
-              {isOverridden && definition && (
-                <span className="text-[9px] text-fg-dim" title={`Default: ${formatValue(definition.defaultValue)}`}>
-                  <RotateCcw className="inline h-3 w-3" />
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </Section>
-
-      {parameterGroups.length === 0 && (
-        <Section title="Settings">
-          <div className="text-[10px] text-fg-dim">
-            No parameter metadata is mapped to this node type yet.
-          </div>
+            );
+          })}
         </Section>
       )}
     </div>
