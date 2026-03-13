@@ -70,9 +70,9 @@ export function FlowNodeHandles({
         <Handle
           id="source-all"
           type="source"
-          position={Position.Right}
+          position={Position.Top}
           className="flow-node__handle !bg-white !border-white/60 !w-2.5 !h-2.5"
-          style={{ top: '8px' }}
+          style={{ left: 'auto', right: '4px', top: '-5px' }}
           title={`Connect all ${outputHandleIds.length} outputs`}
         />
       )}
