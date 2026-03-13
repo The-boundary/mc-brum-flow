@@ -254,9 +254,15 @@ export function getSuggestedExistingTargetNodes(
 ): FlowNode[] {
   const edgeMaps = buildEdgeMaps(flowNodes, flowEdges);
   const allowedTypes = new Set(validTypes);
-  const existingTargets = new Set(
-    (edgeMaps.outgoing.get(sourceNodeId) ?? []).map((e) => e.target)
-  );
+  const outgoing = edgeMaps.outgoing.get(sourceNodeId) ?? [];
+
+  // If any outgoing edge has explicit handles, multi-handle routing is active.
+  // In that case, don't exclude targets — they may accept another handle-specific edge.
+  const hasHandleSpecificEdges = outgoing.some((e) => e.source_handle != null);
+
+  const existingTargets = hasHandleSpecificEdges
+    ? new Set<string>() // don't filter any
+    : new Set(outgoing.map((e) => e.target));
 
   return flowNodes
     .filter((node) => node.id !== sourceNodeId)

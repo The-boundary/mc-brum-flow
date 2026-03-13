@@ -388,4 +388,17 @@ describe('getSuggestedExistingTargetNodes', () => {
     const result = getSuggestedExistingTargetNodes(nodes, [], 'cam', []);
     expect(result).toEqual([]);
   });
+
+  it('includes already-connected target when source has multiple output handles', () => {
+    const nodes = [
+      makeNode('ly', 'layerSetup', 'LayerSetup'),
+      makeNode('ar', 'aspectRatio', 'AR'),
+    ];
+    const edges = [makeEdge('e1', 'ly', 'ar', 'source-0', 'target-0')];
+    const result = getSuggestedExistingTargetNodes(nodes, edges, 'ly', ['aspectRatio']);
+
+    // ar is already connected but the source has handle-specific edges,
+    // so it should still appear in suggestions (for wiring to a different handle)
+    expect(result.map((n) => n.id)).toContain('ar');
+  });
 });
