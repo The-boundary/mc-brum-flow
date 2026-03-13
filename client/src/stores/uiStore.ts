@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { MaxDebugLogEntry } from './types';
 
 export type ViewMode = 'flow' | 'list';
 
@@ -39,11 +40,24 @@ interface UiState {
   sidebarMobileOpen: boolean;
   toggleSidebar: () => void;
   setSidebarMobileOpen: (open: boolean) => void;
+
+  // Toast notification (not persisted)
+  toast: { message: string; level: 'info' | 'success' | 'error' } | null;
+  showToast: (message: string, level?: 'info' | 'success' | 'error') => void;
+  dismissToast: () => void;
+
+  // Max debug log (not persisted)
+  maxDebugLog: MaxDebugLogEntry[];
+  clearMaxDebugLog: () => void;
+
+  // Error (not persisted)
+  error: string | null;
+  setError: (error: string | null) => void;
 }
 
 export const useUiStore = create<UiState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       viewMode: 'flow',
       detailPanelOpen: true,
       detailPanelWidth: 380,
@@ -58,6 +72,9 @@ export const useUiStore = create<UiState>()(
       splitOutputs: false,
       sidebarCollapsed: false,
       sidebarMobileOpen: false,
+      toast: null,
+      maxDebugLog: [],
+      error: null,
 
       setViewMode: (mode) => set({ viewMode: mode }),
       toggleDetailPanel: () => set((s) => ({ detailPanelOpen: !s.detailPanelOpen })),
@@ -73,6 +90,17 @@ export const useUiStore = create<UiState>()(
       toggleSplitOutputs: () => set((s) => ({ splitOutputs: !s.splitOutputs })),
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       setSidebarMobileOpen: (open) => set({ sidebarMobileOpen: open }),
+
+      showToast: (message, level = 'info') => {
+        set({ toast: { message, level } });
+        setTimeout(() => {
+          const current = get().toast;
+          if (current?.message === message) set({ toast: null });
+        }, 4000);
+      },
+      dismissToast: () => set({ toast: null }),
+      clearMaxDebugLog: () => set({ maxDebugLog: [] }),
+      setError: (error) => set({ error }),
     }),
     {
       name: 'brum-flow-ui',
