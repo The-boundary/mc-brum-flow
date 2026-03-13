@@ -480,8 +480,29 @@ export function NodeFlowView() {
   const onConnect: OnConnect = useCallback(
     (params: Connection) => {
       if (!params.source || !params.target) return;
-      // Don't store explicit handle IDs — the layout system assigns them dynamically
-      let changed = storeAddEdge(params.source, params.target, null, null);
+
+      let changed = false;
+
+      if (params.sourceHandle === 'source-all') {
+        // Connect-all: create one edge per output handle → sequential target handles
+        const sourceHandles = handleLayout.nodeHandles.get(params.source);
+        const outputIds = sourceHandles?.outputHandleIds ?? [];
+        if (outputIds.length === 0) return; // guard: no outputs to connect
+        outputIds.forEach((handleId, index) => {
+          const targetHandleId = `target-${index}`;
+          if (storeAddEdge(params.source!, params.target!, handleId, targetHandleId)) {
+            changed = true;
+          }
+        });
+      } else {
+        // Normal single-handle connection — pass handle IDs from React Flow
+        changed = storeAddEdge(
+          params.source,
+          params.target,
+          params.sourceHandle ?? null,
+          params.targetHandle ?? null
+        );
+      }
 
       // Multi-select: also wire all other selected nodes to the same target
       const selectedNodes = nodes.filter((n) => n.selected && n.id !== params.source && n.id !== params.target);
@@ -491,7 +512,7 @@ export function NodeFlowView() {
 
       if (changed) scheduleSave();
     },
-    [scheduleSave, storeAddEdge, nodes]
+    [scheduleSave, storeAddEdge, nodes, handleLayout.nodeHandles]
   );
 
   const onConnectStart: OnConnectStart = useCallback((_event, params) => {
@@ -666,13 +687,22 @@ export function NodeFlowView() {
   ]);
 
   const handleAddNode = useCallback(
-    (type: NodeType, x: number, y: number, sourceId?: string, _sourceHandleId?: string | null) => {
+    (type: NodeType, x: number, y: number, sourceId?: string, sourceHandleId?: string | null) => {
       addNode(type, { x, y });
       if (sourceId) {
         const newNodes = useFlowStore.getState().flowNodes;
         const newest = newNodes[newNodes.length - 1];
         if (newest) {
-          storeAddEdge(sourceId, newest.id, null, null);
+          if (sourceHandleId === 'source-all') {
+            // Connect-all: wire all output handles
+            const sourceHandles = handleLayout.nodeHandles.get(sourceId);
+            const outputIds = sourceHandles?.outputHandleIds ?? [];
+            outputIds.forEach((handleId, index) => {
+              storeAddEdge(sourceId, newest.id, handleId, `target-${index}`);
+            });
+          } else {
+            storeAddEdge(sourceId, newest.id, sourceHandleId ?? null, null);
+          }
 
           // Multi-select: also wire all other selected nodes to the new node
           const selectedNodes = nodes.filter((n) => n.selected && n.id !== sourceId);
@@ -685,12 +715,24 @@ export function NodeFlowView() {
       setContextMenu(null);
       setAutoSuggest(null);
     },
-    [addNode, scheduleSave, storeAddEdge, nodes]
+    [addNode, scheduleSave, storeAddEdge, nodes, handleLayout.nodeHandles]
   );
 
   const handleConnectToExistingNode = useCallback(
-    (sourceId: string, targetId: string, _sourceHandleId?: string | null) => {
-      let changed = storeAddEdge(sourceId, targetId, null, null);
+    (sourceId: string, targetId: string, sourceHandleId?: string | null) => {
+      let changed = false;
+
+      if (sourceHandleId === 'source-all') {
+        const sourceHandles = handleLayout.nodeHandles.get(sourceId);
+        const outputIds = sourceHandles?.outputHandleIds ?? [];
+        outputIds.forEach((handleId, index) => {
+          if (storeAddEdge(sourceId, targetId, handleId, `target-${index}`)) {
+            changed = true;
+          }
+        });
+      } else {
+        changed = storeAddEdge(sourceId, targetId, sourceHandleId ?? null, null);
+      }
 
       // Multi-select: also wire all other selected nodes to the target
       const selectedNodes = nodes.filter((n) => n.selected && n.id !== sourceId && n.id !== targetId);
@@ -704,7 +746,7 @@ export function NodeFlowView() {
       }
       setAutoSuggest(null);
     },
-    [scheduleSave, selectNode, storeAddEdge, nodes]
+    [scheduleSave, selectNode, storeAddEdge, nodes, handleLayout.nodeHandles]
   );
 
   useEffect(() => {
