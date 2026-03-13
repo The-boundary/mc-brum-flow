@@ -91,6 +91,22 @@ const ASPECT_RATIOS = [
   { label: '2.39:1', width: 5040, height: 2109 },
 ] as const;
 
+const TONE_MAPPING_PRESETS = [
+  { label: 'WARM', delta: { whiteBalance: 5500, saturation: 1.1, contrast: 1.05 } },
+  { label: 'COOL', delta: { whiteBalance: 7500, saturation: 0.95, contrast: 1 } },
+  { label: 'NEUTRAL', delta: { whiteBalance: 6500, saturation: 1, contrast: 1 } },
+  { label: 'HI-CON', delta: { whiteBalance: 6500, saturation: 1.2, contrast: 1.3 } },
+  { label: 'DESAT', delta: { whiteBalance: 6500, saturation: 0.5, contrast: 1 } },
+] as const;
+
+const LIGHT_SETUP_PRESETS = [
+  { label: 'DAY', delta: { skyType: 'Corona Sun + Sky', skyIntensity: 1, sunAngle: 45 } },
+  { label: 'NIGHT', delta: { skyType: 'HDRI', skyIntensity: 0.3, iblMap: 'city_night_01.hdr' } },
+  { label: 'OVERCAST', delta: { skyType: 'HDRI', skyIntensity: 0.7, iblMap: 'overcast_01.hdr' } },
+  { label: 'SUNSET', delta: { skyType: 'Corona Sun + Sky', skyIntensity: 0.8, sunAngle: 10 } },
+  { label: 'STUDIO', delta: { skyType: 'None', skyIntensity: 0, groundPlane: false } },
+] as const;
+
 const OUTPUT_FORMATS = ['JPG', 'PNG', 'EXR', 'CXR'] as const;
 
 const STAGE_REV_FIELDS: EditableFieldSpec[] = [
@@ -720,6 +736,40 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
     }
   };
 
+  const handleToneMappingPreset = async (label: string, presetDelta: Record<string, unknown>) => {
+    let preset = configsForType.find((entry) => entry.label === label) ?? null;
+
+    if (!preset) {
+      preset = await createNodeConfig('toneMapping', label, presetDelta);
+    } else {
+      preset = await updateNodeConfig(preset.id, {
+        label,
+        delta: { ...(preset.delta ?? {}), ...presetDelta },
+      });
+    }
+
+    if (preset) {
+      await assignNodeConfig(nodeId, preset.id);
+    }
+  };
+
+  const handleLightSetupPreset = async (label: string, presetDelta: Record<string, unknown>) => {
+    let preset = configsForType.find((entry) => entry.label === label) ?? null;
+
+    if (!preset) {
+      preset = await createNodeConfig('lightSetup', label, presetDelta);
+    } else {
+      preset = await updateNodeConfig(preset.id, {
+        label,
+        delta: { ...(preset.delta ?? {}), ...presetDelta },
+      });
+    }
+
+    if (preset) {
+      await assignNodeConfig(nodeId, preset.id);
+    }
+  };
+
   const handleDeadlineTarget = async (label: string, pool: string) => {
     let preset = configsForType.find((entry) => entry.label === label) ?? null;
 
@@ -769,7 +819,7 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
         </Section>
       )}
 
-      {node.type !== 'override' && node.type !== 'stageRev' && node.type !== 'layerSetup' && node.type !== 'deadline' && node.type !== 'aspectRatio' && (
+      {node.type !== 'override' && node.type !== 'stageRev' && node.type !== 'layerSetup' && node.type !== 'deadline' && node.type !== 'aspectRatio' && node.type !== 'toneMapping' && node.type !== 'lightSetup' && (
         <Section title="Preset">
           <div className="space-y-2">
             <select
@@ -824,6 +874,60 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
         </Section>
       )}
 
+
+      {/* Light Setup: preset selection */}
+      {node.type === 'lightSetup' && (
+        <Section title="Lighting Preset">
+          <div className="grid grid-cols-3 gap-2">
+            {LIGHT_SETUP_PRESETS.map((preset) => {
+              const isActive = config?.label === preset.label || node.label === preset.label;
+              return (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => {
+                    void handleLightSetupPreset(preset.label, { ...preset.delta });
+                  }}
+                  className={`rounded border px-2 py-1.5 text-xs transition ${
+                    isActive
+                      ? 'border-amber-400 bg-amber-400/10 text-amber-300'
+                      : 'border-border bg-surface-300 text-foreground hover:bg-surface-400'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* Tone Mapping: preset selection */}
+      {node.type === 'toneMapping' && (
+        <Section title="Tone Mapping Preset">
+          <div className="grid grid-cols-3 gap-2">
+            {TONE_MAPPING_PRESETS.map((preset) => {
+              const isActive = config?.label === preset.label || node.label === preset.label;
+              return (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => {
+                    void handleToneMappingPreset(preset.label, { ...preset.delta });
+                  }}
+                  className={`rounded border px-2 py-1.5 text-xs transition ${
+                    isActive
+                      ? 'border-cyan-400 bg-cyan-400/10 text-cyan-300'
+                      : 'border-border bg-surface-300 text-foreground hover:bg-surface-400'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </div>
+        </Section>
+      )}
 
       {/* Aspect Ratio: ratio selection */}
       {node.type === 'aspectRatio' && (
