@@ -30,6 +30,10 @@ interface UiState {
   toggleLinkSameType: () => void;
   toggleMoveParents: () => void;
 
+  // Output display
+  splitOutputs: boolean;
+  toggleSplitOutputs: () => void;
+
   // Sidebar
   sidebarCollapsed: boolean;
   sidebarMobileOpen: boolean;
@@ -51,6 +55,7 @@ export const useUiStore = create<UiState>()(
       zoomOutNonce: 0,
       linkSameType: false,
       moveParents: false,
+      splitOutputs: false,
       sidebarCollapsed: false,
       sidebarMobileOpen: false,
 
@@ -65,6 +70,7 @@ export const useUiStore = create<UiState>()(
       requestZoomOut: () => set((s) => ({ zoomOutNonce: s.zoomOutNonce + 1 })),
       toggleLinkSameType: () => set((s) => ({ linkSameType: !s.linkSameType })),
       toggleMoveParents: () => set((s) => ({ moveParents: !s.moveParents })),
+      toggleSplitOutputs: () => set((s) => ({ splitOutputs: !s.splitOutputs })),
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       setSidebarMobileOpen: (open) => set({ sidebarMobileOpen: open }),
     }),
@@ -79,6 +85,7 @@ export const useUiStore = create<UiState>()(
         presetLibraryOpen: state.presetLibraryOpen,
         linkSameType: state.linkSameType,
         moveParents: state.moveParents,
+        splitOutputs: state.splitOutputs,
         sidebarCollapsed: state.sidebarCollapsed,
         sidebarMobileOpen: state.sidebarMobileOpen,
       }),
@@ -93,6 +100,7 @@ export const useUiStore = create<UiState>()(
           presetLibraryOpen: state.presetLibraryOpen ?? false,
           linkSameType: state.linkSameType ?? false,
           moveParents: state.moveParents ?? false,
+          splitOutputs: state.splitOutputs ?? false,
           sidebarCollapsed: state.sidebarCollapsed ?? false,
           sidebarMobileOpen: state.sidebarMobileOpen ?? false,
         };

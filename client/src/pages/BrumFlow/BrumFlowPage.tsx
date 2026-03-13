@@ -3,7 +3,7 @@ import {
   Workflow, List, PanelRightOpen, PanelRightClose, Loader2,
   Plus, Minus, LayoutGrid, MonitorDot, BarChart3, RefreshCcw, Route, ScanSearch,
   AlertCircle, Wifi, WifiOff, Camera, Trash2, Terminal, X, Info, CheckCircle2,
-  Link2, Unlink2, GitFork,
+  Link2, Unlink2, GitFork, Split,
 } from 'lucide-react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useUiStore } from '@/stores/uiStore';
@@ -32,6 +32,8 @@ export default function BrumFlowPage() {
     toggleLinkSameType,
     moveParents,
     toggleMoveParents,
+    splitOutputs,
+    toggleSplitOutputs,
   } = useUiStore();
   const {
     loading,
@@ -256,6 +258,13 @@ export default function BrumFlowPage() {
               tooltip={moveParents ? 'Move Parents ON — drag also moves upstream nodes' : 'Move Parents OFF'}
               onClick={toggleMoveParents}
               active={moveParents}
+            />
+            <div className="mx-1 h-4 w-px bg-border" />
+            <ToolbarButton
+              icon={Split}
+              tooltip={splitOutputs ? 'Split Outputs ON — one node per output path' : 'Split Outputs OFF — combined output nodes'}
+              onClick={toggleSplitOutputs}
+              active={splitOutputs}
             />
           </div>
 

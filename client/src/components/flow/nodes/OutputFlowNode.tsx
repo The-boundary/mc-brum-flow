@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import type { NodeProps } from '@xyflow/react';
 import { FileOutput } from 'lucide-react';
-import { useFlowStore } from '@/stores/flowStore';
+import { useFlowStore, type ResolvedPath } from '@/stores/flowStore';
 import { FlowNodeHandles } from '../FlowNodeHandles';
 import { getNodeHeight } from '../flowLayout';
 import type { BranchLabelMeta } from '../graphSemantics';
@@ -14,6 +14,8 @@ interface OutputFlowData {
   isPathDimmed?: boolean;
   inputHandleIds?: string[];
   outputHandleLabels?: Record<string, BranchLabelMeta>;
+  splitPath?: ResolvedPath;
+  originalNodeId?: string;
   [key: string]: unknown;
 }
 
@@ -28,7 +30,9 @@ export const OutputFlowNode = memo(({ id, data }: NodeProps & { data: OutputFlow
 
   const config = data.config_id ? nodeConfigs.find((c) => c.id === data.config_id) : null;
   const format = (config?.delta?.format as string) ?? 'EXR';
-  const pathsToThis = resolvedPaths.filter((path) => path.outputNodeId === id);
+  const pathsToThis = data.splitPath
+    ? [data.splitPath]
+    : resolvedPaths.filter((path) => path.outputNodeId === id);
   const enabledCount = pathsToThis.filter((path) => path.enabled).length;
   const hasResolvedPaths = pathsToThis.length > 0;
   const isFullyDisabled = hasResolvedPaths && enabledCount === 0;
@@ -46,7 +50,7 @@ export const OutputFlowNode = memo(({ id, data }: NodeProps & { data: OutputFlow
           ? 'border-border bg-surface-200 hover:border-fuchsia-400/50'
           : 'border-border/40 bg-surface-200/40 opacity-70'
       } ${isPathDimmed ? 'opacity-30' : ''}`}
-      onClick={(e) => { e.stopPropagation(); selectNode(id); }}
+      onClick={(e) => { e.stopPropagation(); selectNode(data.originalNodeId ?? id); }}
     >
       <div className="flex items-center gap-2">
         <FileOutput className="w-3.5 h-3.5 text-fuchsia-400 shrink-0" />

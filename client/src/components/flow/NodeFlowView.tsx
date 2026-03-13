@@ -36,7 +36,7 @@ import {
 
 import type { FlowEdge, FlowNode, NodeType } from '@shared/types';
 
-import { useFlowStore } from '@/stores/flowStore';
+import { useFlowStore, type ResolvedPath } from '@/stores/flowStore';
 import { useUiStore } from '@/stores/uiStore';
 
 import { ColoredEdge } from './ColoredEdge';
@@ -232,6 +232,8 @@ export function NodeFlowView() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const linkSameType = useUiStore((s) => s.linkSameType);
   const moveParents = useUiStore((s) => s.moveParents);
+  const splitOutputs = useUiStore((s) => s.splitOutputs);
+  const resolvedPaths = useFlowStore((s) => s.resolvedPaths);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingConnectionRef = useRef<PendingConnectionState | null>(null);
   const autoSuggestJustSetRef = useRef(false);
@@ -258,14 +260,88 @@ export function NodeFlowView() {
     [storeEdges, hiddenPreviousNodeIds]
   );
 
+  // When splitOutputs is on, replace each output node with per-path virtual nodes
+  const { displayNodes, displayEdges, nodeIdMap, edgeIdMap, splitPathMap } = useMemo(() => {
+    const emptyResult = {
+      displayNodes: visibleFlowNodes,
+      displayEdges: visibleStoreEdges,
+      nodeIdMap: new Map<string, string>(),
+      edgeIdMap: new Map<string, string>(),
+      splitPathMap: new Map<string, ResolvedPath>(),
+    };
+    if (!splitOutputs || resolvedPaths.length === 0) return emptyResult;
+
+    const nMap = new Map<string, string>();
+    const eMap = new Map<string, string>();
+    const pMap = new Map<string, ResolvedPath>();
+    const newNodes: FlowNode[] = [];
+    const newEdges: FlowEdge[] = [];
+    const outputNodeIds = new Set(
+      visibleFlowNodes.filter((n) => n.type === 'output').map((n) => n.id)
+    );
+
+    for (const node of visibleFlowNodes) {
+      if (node.type !== 'output') {
+        newNodes.push(node);
+      }
+    }
+
+    for (const node of visibleFlowNodes) {
+      if (node.type !== 'output') continue;
+      const paths = resolvedPaths.filter((p) => p.outputNodeId === node.id);
+      if (paths.length === 0) {
+        newNodes.push(node);
+        continue;
+      }
+      for (let i = 0; i < paths.length; i++) {
+        const path = paths[i];
+        const virtualId = `${node.id}__split__${i}`;
+        nMap.set(virtualId, node.id);
+        pMap.set(virtualId, path);
+        newNodes.push({
+          ...node,
+          id: virtualId,
+          label: path.cameraName,
+          position: { x: node.position.x, y: node.position.y + i * 80 },
+        });
+      }
+    }
+
+    for (const edge of visibleStoreEdges) {
+      if (!outputNodeIds.has(edge.target)) {
+        newEdges.push(edge);
+        continue;
+      }
+      const paths = resolvedPaths.filter((p) => p.outputNodeId === edge.target);
+      if (paths.length === 0) {
+        newEdges.push(edge);
+        continue;
+      }
+      for (let i = 0; i < paths.length; i++) {
+        const path = paths[i];
+        const nodeIds = path.nodeIds;
+        const outputIdx = nodeIds.indexOf(edge.target);
+        if (outputIdx < 1) continue;
+        if (nodeIds[outputIdx - 1] === edge.source) {
+          const virtualTargetId = `${edge.target}__split__${i}`;
+          const virtualEdgeId = `${edge.id}__split__${i}`;
+          eMap.set(virtualEdgeId, edge.id);
+          newEdges.push({ ...edge, id: virtualEdgeId, target: virtualTargetId });
+        }
+      }
+    }
+
+    return { displayNodes: newNodes, displayEdges: newEdges, nodeIdMap: nMap, edgeIdMap: eMap, splitPathMap: pMap };
+  }, [splitOutputs, resolvedPaths, visibleFlowNodes, visibleStoreEdges]);
+
   // Use the FULL graph for semantics so hidden cameras still count for edge coloring
   const semantics = useMemo(
     () => getFlowSemantics(flowNodes, storeEdges, selectedNodeId),
     [flowNodes, storeEdges, selectedNodeId]
   );
   const handleLayout = useMemo(
-    () => getFlowHandleLayout(visibleFlowNodes, visibleStoreEdges),
-    [visibleFlowNodes, visibleStoreEdges]
+    () => getFlowHandleLayout(displayNodes, displayEdges),
+    [displayNodes, displayEdges]
   );
 
   const hasCameraSelection = semantics.selectedCameraNodeId !== null;
@@ -282,31 +358,85 @@ export function NodeFlowView() {
 
   const rfNodes: Node[] = useMemo(
     () =>
-      visibleFlowNodes.map((node) => ({
-        id: node.id,
-        type: node.type,
-        position: node.position,
-        data: {
-          label: node.label,
-          nodeType: node.type,
-          camera_id: node.camera_id,
-          config_id: node.config_id,
-          hide_previous: node.hide_previous,
-          enabled: node.enabled,
-          outputHandleLabels: semantics.outputHandleLabels.get(node.id) ?? {},
-          isPathHighlighted: semantics.highlightedNodeIds.has(node.id),
-          isPathDimmed: hasCameraSelection && !semantics.highlightedNodeIds.has(node.id),
-          inputHandleIds: handleLayout.nodeHandles.get(node.id)?.inputHandleIds ?? [],
-          outputHandleIds: handleLayout.nodeHandles.get(node.id)?.outputHandleIds ?? [],
-        },
-      })),
-    [visibleFlowNodes, semantics, hasCameraSelection, handleLayout.nodeHandles]
+      displayNodes.map((node) => {
+        const originalId = nodeIdMap.get(node.id) ?? node.id;
+        const isVirtual = nodeIdMap.has(node.id);
+        return {
+          id: node.id,
+          type: node.type,
+          position: node.position,
+          draggable: !isVirtual,
+          connectable: !isVirtual,
+          data: {
+            label: node.label,
+            nodeType: node.type,
+            camera_id: node.camera_id,
+            config_id: node.config_id,
+            hide_previous: node.hide_previous,
+            enabled: node.enabled,
+            outputHandleLabels: semantics.outputHandleLabels.get(originalId) ?? {},
+            isPathHighlighted: semantics.highlightedNodeIds.has(originalId),
+            isPathDimmed: hasCameraSelection && !semantics.highlightedNodeIds.has(originalId),
+            inputHandleIds: handleLayout.nodeHandles.get(node.id)?.inputHandleIds ?? [],
+            outputHandleIds: handleLayout.nodeHandles.get(node.id)?.outputHandleIds ?? [],
+            splitPath: splitPathMap.get(node.id),
+            originalNodeId: isVirtual ? originalId : undefined,
+          },
+        };
+      }),
+    [displayNodes, semantics, hasCameraSelection, handleLayout.nodeHandles, nodeIdMap, splitPathMap]
   );
+
+  // Compute routing offsets so parallel edges form a staircase instead of overlapping
+  const routingOffsets = useMemo(() => {
+    const offsets = new Map<string, number>();
+    const nodeMap = new Map(displayNodes.map((n) => [n.id, n]));
+    const STEP = 12;
+
+    // Target-side: spread edges converging on the same target node
+    const byTarget = new Map<string, FlowEdge[]>();
+    for (const edge of displayEdges) {
+      const group = byTarget.get(edge.target);
+      if (group) group.push(edge);
+      else byTarget.set(edge.target, [edge]);
+    }
+    for (const [, edges] of byTarget) {
+      if (edges.length <= 1) continue;
+      const sorted = [...edges].sort((a, b) =>
+        (nodeMap.get(a.source)?.position.y ?? 0) - (nodeMap.get(b.source)?.position.y ?? 0)
+      );
+      for (let i = 0; i < sorted.length; i++) {
+        offsets.set(sorted[i].id, (i - (sorted.length - 1) / 2) * STEP);
+      }
+    }
+
+    // Source-side: spread edges diverging from the same source node
+    const bySource = new Map<string, FlowEdge[]>();
+    for (const edge of displayEdges) {
+      const group = bySource.get(edge.source);
+      if (group) group.push(edge);
+      else bySource.set(edge.source, [edge]);
+    }
+    for (const [, edges] of bySource) {
+      if (edges.length <= 1) continue;
+      const sorted = [...edges].sort((a, b) =>
+        (nodeMap.get(a.target)?.position.y ?? 0) - (nodeMap.get(b.target)?.position.y ?? 0)
+      );
+      for (let i = 0; i < sorted.length; i++) {
+        const off = (i - (sorted.length - 1) / 2) * STEP;
+        const existing = offsets.get(sorted[i].id) ?? 0;
+        offsets.set(sorted[i].id, existing + off);
+      }
+    }
+
+    return offsets;
+  }, [displayNodes, displayEdges]);
 
   const rfEdges: Edge[] = useMemo(
     () =>
-      visibleStoreEdges.map((edge) => {
-        const cameraCount = semantics.edgeCameraCounts.get(edge.id) ?? 0;
+      displayEdges.map((edge) => {
+        const originalId = edgeIdMap.get(edge.id) ?? edge.id;
+        const cameraCount = semantics.edgeCameraCounts.get(originalId) ?? 0;
         const handleAssignment = handleLayout.edgeHandles.get(edge.id);
 
         return {
@@ -318,14 +448,15 @@ export function NodeFlowView() {
           type: 'colored',
           data: {
             cameraCount,
-            hoverLabel: semantics.edgeLabels.get(edge.id),
-            isPathHighlighted: semantics.highlightedEdgeIds.has(edge.id),
-            isPathDimmed: hasCameraSelection && !semantics.highlightedEdgeIds.has(edge.id),
-            shouldAnimateFlow: hasCameraSelection && semantics.highlightedEdgeIds.has(edge.id),
+            hoverLabel: semantics.edgeLabels.get(originalId),
+            isPathHighlighted: semantics.highlightedEdgeIds.has(originalId),
+            isPathDimmed: hasCameraSelection && !semantics.highlightedEdgeIds.has(originalId),
+            shouldAnimateFlow: hasCameraSelection && semantics.highlightedEdgeIds.has(originalId),
+            routingOffset: routingOffsets.get(edge.id) ?? 0,
           },
         };
       }),
-    [visibleStoreEdges, semantics, hasCameraSelection, handleLayout.edgeHandles]
+    [displayEdges, semantics, hasCameraSelection, handleLayout.edgeHandles, edgeIdMap, routingOffsets]
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);

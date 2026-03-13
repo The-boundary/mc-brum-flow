@@ -30,15 +30,18 @@ export const ColoredEdge = memo(({
     isPathHighlighted?: boolean;
     isPathDimmed?: boolean;
     shouldAnimateFlow?: boolean;
+    routingOffset?: number;
   };
 }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const routingOffset = data?.routingOffset ?? 0;
   const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX, sourceY,
     targetX, targetY,
     sourcePosition,
     targetPosition,
     borderRadius: 8,
+    ...(routingOffset !== 0 ? { centerX: (sourceX + targetX) / 2 + routingOffset } : {}),
   });
 
   const color = (data?.cameraCount ?? 0) > 1 ? COLORS.grouped : COLORS.single;
