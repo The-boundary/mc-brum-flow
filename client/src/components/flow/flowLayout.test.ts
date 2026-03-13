@@ -256,6 +256,41 @@ describe('getAutoLayoutPositions', () => {
     // The two branches should have different y positions
     expect(positions['g1'].y).not.toBe(positions['g2'].y);
   });
+
+  it('sorts sibling nodes by target_handle index (target-0 above target-1)', () => {
+    const nodes = [
+      makeNode('cam1', 'camera'),
+      makeNode('cam2', 'camera'),
+      makeNode('grp', 'group'),
+    ];
+    // cam1 → target-0 (top handle), cam2 → target-1 (bottom handle)
+    const edges = [
+      makeEdge('e1', 'cam1', 'grp', undefined, 'target-0'),
+      makeEdge('e2', 'cam2', 'grp', undefined, 'target-1'),
+    ];
+    const positions = getAutoLayoutPositions(nodes, edges);
+
+    // cam1 (target-0) should be above cam2 (target-1) → lower Y value
+    expect(positions['cam1'].y).toBeLessThan(positions['cam2'].y);
+  });
+
+  it('sorts three siblings by target_handle index', () => {
+    const nodes = [
+      makeNode('a', 'camera'),
+      makeNode('b', 'camera'),
+      makeNode('c', 'camera'),
+      makeNode('grp', 'group'),
+    ];
+    const edges = [
+      makeEdge('e1', 'a', 'grp', undefined, 'target-0'),
+      makeEdge('e2', 'b', 'grp', undefined, 'target-1'),
+      makeEdge('e3', 'c', 'grp', undefined, 'target-2'),
+    ];
+    const positions = getAutoLayoutPositions(nodes, edges);
+
+    expect(positions['a'].y).toBeLessThan(positions['b'].y);
+    expect(positions['b'].y).toBeLessThan(positions['c'].y);
+  });
 });
 
 // ── getSuggestedNextNodeTypes ──

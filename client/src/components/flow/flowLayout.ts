@@ -181,6 +181,29 @@ export function getAutoLayoutPositions(flowNodes: FlowNode[], flowEdges: FlowEdg
     };
   }
 
+  // Post-process: sort sibling nodes by their target_handle index so
+  // nodes connecting to target-0 appear above nodes connecting to target-1.
+  const siblingsByTarget = new Map<string, { nodeId: string; handleIndex: number }[]>();
+  for (const edge of flowEdges) {
+    const hi = parseHandleIndex(edge.target_handle);
+    if (hi === null) continue;
+    if (!siblingsByTarget.has(edge.target)) siblingsByTarget.set(edge.target, []);
+    siblingsByTarget.get(edge.target)!.push({ nodeId: edge.source, handleIndex: hi });
+  }
+
+  for (const siblings of siblingsByTarget.values()) {
+    if (siblings.length < 2) continue;
+    // Collect current Y values, sort them ascending (top-first)
+    const yValues = siblings.map((s) => positions[s.nodeId]?.y).filter((y): y is number => y != null);
+    if (yValues.length !== siblings.length) continue;
+    yValues.sort((a, b) => a - b);
+    // Assign Y values by handle index order (lowest handle index gets lowest Y = highest on screen)
+    siblings.sort((a, b) => a.handleIndex - b.handleIndex);
+    siblings.forEach((s, i) => {
+      positions[s.nodeId].y = yValues[i];
+    });
+  }
+
   return positions;
 }
 
