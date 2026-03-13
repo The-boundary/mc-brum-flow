@@ -102,19 +102,10 @@ export function getFlowHandleLayout(flowNodes: FlowNode[], flowEdges: FlowEdge[]
       compareEdgesByCounterpart(a, b, edgeMaps.nodesById, 'outgoing')
     );
 
-    const hasInputs = INPUT_NODE_TYPES.has(node.type);
-    const hasOutputs = OUTPUT_NODE_TYPES.has(node.type);
-
-    // For non-group nodes with both inputs and outputs, enforce symmetric handle counts.
-    // Group nodes are exempt — they merge multiple inputs into fewer outputs.
-    const symmetricCount = (node.type !== 'group' && hasInputs && hasOutputs)
-      ? Math.max(incoming.length, outgoing.length, 1)
-      : null;
-
-    const inputCount = symmetricCount ?? Math.max(incoming.length, 1);
-    const outputCount = symmetricCount ?? Math.max(outgoing.length, 1);
-    const inputHandleIds = hasInputs ? buildHandleIds('target', inputCount) : [];
-    const outputHandleIds = hasOutputs ? buildHandleIds('source', outputCount) : [];
+    const inputCount = Math.max(incoming.length, 1);
+    const outputCount = Math.max(outgoing.length, 1);
+    const inputHandleIds = INPUT_NODE_TYPES.has(node.type) ? buildHandleIds('target', inputCount) : [];
+    const outputHandleIds = OUTPUT_NODE_TYPES.has(node.type) ? buildHandleIds('source', outputCount) : [];
 
     nodeHandles.set(node.id, { inputHandleIds, outputHandleIds });
 
