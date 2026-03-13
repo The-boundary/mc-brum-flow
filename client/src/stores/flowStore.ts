@@ -494,7 +494,76 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
       ...(sh && { source_handle: sh }),
       ...(th && { target_handle: th }),
     };
-    set((s) => ({ flowEdges: [...s.flowEdges, edge] }));
+
+    // Add the new edge, then propagate lanes through downstream passthrough nodes
+    set((s) => {
+      let edges = [...s.flowEdges, edge];
+
+      // Passthrough nodes: when inputs > outputs, auto-create matching output edges
+      const PASSTHROUGH_TYPES = new Set<NodeType>([
+        'group', 'lightSetup', 'toneMapping', 'layerSetup',
+        'aspectRatio', 'stageRev', 'override', 'deadline',
+      ]);
+
+      const visited = new Set<string>();
+      const queue = [target];
+
+      while (queue.length > 0) {
+        const nodeId = queue.shift()!;
+        if (visited.has(nodeId)) continue;
+        visited.add(nodeId);
+
+        const node = s.flowNodes.find((n) => n.id === nodeId);
+        if (!node || !PASSTHROUGH_TYPES.has(node.type)) continue;
+
+        const incomingCount = edges.filter((e) => e.target === nodeId).length;
+        const outgoing = edges.filter((e) => e.source === nodeId);
+        const outgoingCount = outgoing.length;
+
+        if (outgoingCount > 0 && outgoingCount < incomingCount) {
+          // Find the max existing source handle index
+          let maxSourceIdx = -1;
+          for (const e of outgoing) {
+            const m = e.source_handle?.match(/-(\d+)$/);
+            if (m) maxSourceIdx = Math.max(maxSourceIdx, Number.parseInt(m[1], 10));
+          }
+
+          // Get unique downstream targets to replicate edges to
+          const downstreamTargets = [...new Set(outgoing.map((e) => e.target))];
+          const needed = incomingCount - outgoingCount;
+
+          for (let i = 0; i < needed; i++) {
+            for (const dt of downstreamTargets) {
+              const dtIncoming = edges.filter((e) => e.target === dt);
+              let maxTargetIdx = -1;
+              for (const e of dtIncoming) {
+                const m = e.target_handle?.match(/-(\d+)$/);
+                if (m) maxTargetIdx = Math.max(maxTargetIdx, Number.parseInt(m[1], 10));
+              }
+
+              const newSh = `source-${maxSourceIdx + 1 + i}`;
+              const newTh = `target-${maxTargetIdx + 1 + i}`;
+              const newEdgeId = `edge_${nodeId}_${dt}_${newSh}_${newTh}`;
+
+              if (!edges.some((e) => e.id === newEdgeId)) {
+                edges = [...edges, {
+                  id: newEdgeId,
+                  source: nodeId,
+                  target: dt,
+                  source_handle: newSh,
+                  target_handle: newTh,
+                }];
+                // Continue propagation to the downstream node
+                queue.push(dt);
+              }
+            }
+          }
+        }
+      }
+
+      return { flowEdges: edges };
+    });
+
     scheduleStoreSave(get().saveGraph, get().resolvePaths, true);
     return true;
   },

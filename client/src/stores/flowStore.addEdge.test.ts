@@ -85,6 +85,96 @@ describe('addEdge handle-aware behavior', () => {
   });
 });
 
+describe('lane propagation through passthrough nodes', () => {
+  beforeEach(() => {
+    useFlowStore.setState({
+      flowNodes: [],
+      flowEdges: [],
+      activeSceneId: 'test-scene',
+    });
+  });
+
+  it('auto-creates output edge when passthrough node gains a second input', () => {
+    seedStore([
+      { id: 'tm1', type: 'toneMapping' },
+      { id: 'tm2', type: 'toneMapping' },
+      { id: 'ly', type: 'layerSetup' },
+      { id: 'ar', type: 'aspectRatio' },
+    ]);
+
+    // Wire first pipeline: tm1 → ly → ar
+    useFlowStore.getState().addEdge('tm1', 'ly', 'source-0', 'target-0');
+    useFlowStore.getState().addEdge('ly', 'ar', 'source-0', 'target-0');
+    expect(useFlowStore.getState().flowEdges).toHaveLength(2);
+
+    // Wire second tone mapping into layer setup
+    useFlowStore.getState().addEdge('tm2', 'ly', 'source-0', 'target-1');
+
+    // Layer setup should now have auto-created a second output edge to ar
+    const edges = useFlowStore.getState().flowEdges;
+    const lyOutgoing = edges.filter((e) => e.source === 'ly');
+    expect(lyOutgoing).toHaveLength(2);
+    expect(lyOutgoing[0].source_handle).toBe('source-0');
+    expect(lyOutgoing[1].source_handle).toBe('source-1');
+  });
+
+  it('propagates lanes through multiple downstream nodes', () => {
+    seedStore([
+      { id: 'tm1', type: 'toneMapping' },
+      { id: 'tm2', type: 'toneMapping' },
+      { id: 'ly', type: 'layerSetup' },
+      { id: 'ar', type: 'aspectRatio' },
+      { id: 'sr', type: 'stageRev' },
+    ]);
+
+    // Wire: tm1 → ly → ar → sr
+    useFlowStore.getState().addEdge('tm1', 'ly', 'source-0', 'target-0');
+    useFlowStore.getState().addEdge('ly', 'ar', 'source-0', 'target-0');
+    useFlowStore.getState().addEdge('ar', 'sr', 'source-0', 'target-0');
+
+    // Add second input to ly
+    useFlowStore.getState().addEdge('tm2', 'ly', 'source-0', 'target-1');
+
+    const edges = useFlowStore.getState().flowEdges;
+    // ly should have 2 outputs to ar
+    expect(edges.filter((e) => e.source === 'ly')).toHaveLength(2);
+    // ar should have 2 outputs to sr (cascaded)
+    expect(edges.filter((e) => e.source === 'ar')).toHaveLength(2);
+  });
+
+  it('does not propagate through output nodes (sink)', () => {
+    seedStore([
+      { id: 'dl1', type: 'deadline' },
+      { id: 'dl2', type: 'deadline' },
+      { id: 'out', type: 'output' },
+    ]);
+
+    useFlowStore.getState().addEdge('dl1', 'out', 'source-0', 'target-0');
+    useFlowStore.getState().addEdge('dl2', 'out', 'source-0', 'target-1');
+
+    // Output node is a sink, so no propagation needed
+    const edges = useFlowStore.getState().flowEdges;
+    expect(edges).toHaveLength(2);
+    const outOutgoing = edges.filter((e) => e.source === 'out');
+    expect(outOutgoing).toHaveLength(0);
+  });
+
+  it('does not create output edges when node has no downstream', () => {
+    seedStore([
+      { id: 'tm1', type: 'toneMapping' },
+      { id: 'tm2', type: 'toneMapping' },
+      { id: 'ly', type: 'layerSetup' },
+    ]);
+
+    useFlowStore.getState().addEdge('tm1', 'ly', 'source-0', 'target-0');
+    // No downstream from ly
+    useFlowStore.getState().addEdge('tm2', 'ly', 'source-0', 'target-1');
+
+    const edges = useFlowStore.getState().flowEdges;
+    expect(edges).toHaveLength(2); // Just the 2 input edges, no output created
+  });
+});
+
 describe('scaffoldPipeline', () => {
   beforeEach(() => {
     useFlowStore.setState({
