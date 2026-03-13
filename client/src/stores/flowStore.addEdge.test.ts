@@ -84,3 +84,48 @@ describe('addEdge handle-aware behavior', () => {
     expect(useFlowStore.getState().flowEdges).toHaveLength(1);
   });
 });
+
+describe('scaffoldPipeline', () => {
+  beforeEach(() => {
+    useFlowStore.setState({
+      flowNodes: [],
+      flowEdges: [],
+      activeSceneId: 'test-scene',
+    });
+  });
+
+  it('creates a full pipeline of 9 nodes and 8 edges', () => {
+    useFlowStore.getState().scaffoldPipeline();
+    const { flowNodes, flowEdges } = useFlowStore.getState();
+    expect(flowNodes).toHaveLength(9);
+    expect(flowEdges).toHaveLength(8);
+  });
+
+  it('creates the correct node types in pipeline order', () => {
+    useFlowStore.getState().scaffoldPipeline();
+    const types = useFlowStore.getState().flowNodes.map((n) => n.type);
+    expect(types).toEqual([
+      'camera', 'group', 'lightSetup', 'toneMapping',
+      'layerSetup', 'aspectRatio', 'stageRev', 'deadline', 'output',
+    ]);
+  });
+
+  it('wires each node to the next with source-0 → target-0', () => {
+    useFlowStore.getState().scaffoldPipeline();
+    const { flowNodes, flowEdges } = useFlowStore.getState();
+    for (let i = 0; i < flowEdges.length; i++) {
+      expect(flowEdges[i].source).toBe(flowNodes[i].id);
+      expect(flowEdges[i].target).toBe(flowNodes[i + 1].id);
+      expect(flowEdges[i].source_handle).toBe('source-0');
+      expect(flowEdges[i].target_handle).toBe('target-0');
+    }
+  });
+
+  it('appends to existing nodes (does not replace)', () => {
+    seedStore([{ id: 'existing', type: 'camera' }]);
+    useFlowStore.getState().scaffoldPipeline();
+    const { flowNodes } = useFlowStore.getState();
+    expect(flowNodes).toHaveLength(10); // 1 existing + 9 new
+    expect(flowNodes[0].id).toBe('existing');
+  });
+});

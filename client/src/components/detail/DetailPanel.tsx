@@ -74,6 +74,8 @@ const STAGE_REV_PRESETS = [
   { label: 'Rev C', longestEdge: 6000 },
 ] as const;
 
+const OUTPUT_FORMATS = ['JPG', 'PNG', 'EXR', 'CXR'] as const;
+
 const STAGE_REV_FIELDS: EditableFieldSpec[] = [
   {
     label: 'Longest Edge',
@@ -157,7 +159,6 @@ const NODE_PARAMETER_GROUPS: Partial<Record<NodeType, string[]>> = {
   lightSetup: ['environment'],
   toneMapping: ['tone_mapping'],
   layerSetup: ['layers'],
-  aspectRatio: ['scene_output'],
   stageRev: ['scene_output', 'corona_renderer'],
   // Override uses the upstream node's parameter groups (resolved dynamically)
 };
@@ -346,7 +347,12 @@ export function DetailPanel() {
     return <EmptyPanel />;
   }
 
-  const node = flowNodes.find((entry) => entry.id === selectedNodeId);
+  // Handle split output virtual nodes: "realId__split__index"
+  const splitMatch = selectedNodeId.match(/^(.+)__split__(\d+)$/);
+  const realNodeId = splitMatch ? splitMatch[1] : selectedNodeId;
+  const splitIndex = splitMatch ? Number.parseInt(splitMatch[2], 10) : null;
+
+  const node = flowNodes.find((entry) => entry.id === realNodeId);
   if (!node) {
     return <EmptyPanel />;
   }
@@ -357,7 +363,7 @@ export function DetailPanel() {
     case 'group':
       return <GroupDetail nodeId={node.id} />;
     case 'output':
-      return <OutputDetail nodeId={node.id} />;
+      return <OutputDetail nodeId={node.id} splitIndex={splitIndex} />;
     default:
       return <ProcessingDetail nodeId={node.id} />;
   }
@@ -510,6 +516,7 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
   const createNodeConfig = useFlowStore((state) => state.createNodeConfig);
   const updateNodeConfig = useFlowStore((state) => state.updateNodeConfig);
   const updateNodeLabel = useFlowStore((state) => state.updateNodeLabel);
+  const refreshLayersFromMax = useFlowStore((state) => state.refreshLayersFromMax);
   const nodeType = node?.type ?? 'override';
 
   // For override nodes, determine the upstream node type to scope which settings are editable
@@ -577,13 +584,6 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
     () => parameterGroups.flatMap((group) => group.definitions),
     [parameterGroups]
   );
-  const editableFields = useMemo(() => {
-    if (nodeType === 'toneMapping') {
-      return TONE_MAPPING_FIELDS;
-    }
-    // stageRev: no editable fields — use override nodes to change settings
-    return [];
-  }, [nodeType]);
   const currentStageRevValue = useMemo(() => {
     const spec = STAGE_REV_FIELDS[0];
     if (!spec) return null;
@@ -718,7 +718,7 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
         </Section>
       )}
 
-      {node.type !== 'override' && (
+      {node.type !== 'override' && node.type !== 'stageRev' && (
         <Section title="Preset">
           <div className="space-y-2">
             <select
@@ -773,47 +773,32 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
         </Section>
       )}
 
-      {editableFields.length > 0 && (
-        <Section title="Quick Controls">
-          <div className="space-y-3">
-            {editableFields.map((spec) => {
-              const definition = getFieldDefinition(parameterDefinitions, spec);
-              const value = getEffectiveFieldValue(delta, definition, spec);
-              return (
-                <label key={spec.label} className="block">
-                  <div className="mb-1 flex items-center justify-between text-[11px]">
-                    <span className="text-foreground">{spec.label}</span>
-                    <span className="text-fg-dim">Default: {formatValue(definition.defaultValue)}</span>
-                  </div>
-                  <input
-                    type="number"
-                    min={definition.min ?? spec.min}
-                    max={definition.max ?? spec.max}
-                    step={spec.step ?? 1}
-                    value={value}
-                    onChange={(event) => {
-                      void handleFieldChange(spec, event.target.value);
-                    }}
-                    className="w-full rounded border border-border bg-surface-300 px-2 py-1.5 text-xs text-foreground focus:border-brand focus:outline-none"
-                  />
-                </label>
-              );
-            })}
-          </div>
-        </Section>
-      )}
 
       {/* Layer setup: show layers from the assigned config */}
-      {node.type === 'layerSetup' && config && Array.isArray(delta.layers) && (delta.layers as string[]).length > 0 && (
+      {node.type === 'layerSetup' && (
         <Section title="Layers">
-          <div className="space-y-1">
-            {(delta.layers as string[]).map((layer) => (
-              <div key={layer} className="flex items-center gap-2 rounded border border-border/30 bg-surface-200/40 px-2 py-1">
-                <Layers className="h-3 w-3 text-cyan-400 shrink-0" />
-                <span className="text-xs text-foreground">{layer}</span>
-              </div>
-            ))}
+          <div className="mb-2">
+            <button
+              type="button"
+              onClick={() => { void refreshLayersFromMax(nodeId); }}
+              className="flex items-center gap-1.5 rounded border border-border bg-surface-300 px-2 py-1 text-[10px] text-foreground transition hover:bg-surface-400"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Refresh from Max
+            </button>
           </div>
+          {config && Array.isArray(delta.layers) && (delta.layers as string[]).length > 0 ? (
+            <div className="space-y-1">
+              {(delta.layers as string[]).map((layer) => (
+                <div key={layer} className="flex items-center gap-2 rounded border border-border/30 bg-surface-200/40 px-2 py-1">
+                  <Layers className="h-3 w-3 text-cyan-400 shrink-0" />
+                  <span className="text-xs text-foreground">{layer}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[10px] text-fg-dim">No layers assigned. Click refresh to import from Max.</div>
+          )}
         </Section>
       )}
 
@@ -832,8 +817,43 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
         </Section>
       )}
 
-      {/* All Settings: shown for override nodes and editable processing nodes (not stageRev, not deadline) */}
-      {node.type !== 'stageRev' && node.type !== 'deadline' && parameterGroups.length > 0 && (
+      {/* Tone Mapping: dedicated slider section */}
+      {node.type === 'toneMapping' && (
+        <Section title="Tone Mapping">
+          <div className="space-y-3">
+            {TONE_MAPPING_FIELDS.map((spec) => {
+              const definition = getFieldDefinition(parameterDefinitions, spec);
+              const value = getEffectiveFieldValue(delta, definition, spec);
+              return (
+                <label key={spec.label} className="block">
+                  <div className="mb-1 flex items-center justify-between text-[11px]">
+                    <span className="text-foreground">{spec.label}</span>
+                    <span className="font-mono text-[10px] text-fg-dim">{typeof value === 'number' ? value.toFixed(spec.step && spec.step < 1 ? 2 : 0) : value}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={definition.min ?? spec.min}
+                    max={definition.max ?? spec.max}
+                    step={spec.step ?? 1}
+                    value={value}
+                    onChange={(event) => {
+                      void handleFieldChange(spec, event.target.value);
+                    }}
+                    className="w-full accent-brand"
+                  />
+                  <div className="flex justify-between text-[9px] text-fg-dim">
+                    <span>{definition.min ?? spec.min}</span>
+                    <span>{definition.max ?? spec.max}</span>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* All Settings: shown for override nodes and editable processing nodes (not stageRev, not deadline, not toneMapping) */}
+      {node.type !== 'stageRev' && node.type !== 'deadline' && node.type !== 'toneMapping' && parameterGroups.length > 0 && (
         <Section title="All Settings">
           <div className="space-y-3">
             <input
@@ -917,13 +937,16 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
   );
 }
 
-function OutputDetail({ nodeId }: { nodeId: string }) {
+function OutputDetail({ nodeId, splitIndex }: { nodeId: string; splitIndex?: number | null }) {
   const node = useFlowStore((state) => state.flowNodes.find((entry) => entry.id === nodeId));
   const nodeConfigs = useFlowStore((state) => state.nodeConfigs);
   const resolvedPaths = useFlowStore((state) => state.resolvedPaths);
   const setResolvedPathEnabled = useFlowStore((state) => state.setResolvedPathEnabled);
   const setOutputPathsEnabled = useFlowStore((state) => state.setOutputPathsEnabled);
   const updateNodeLabel = useFlowStore((state) => state.updateNodeLabel);
+  const createNodeConfig = useFlowStore((state) => state.createNodeConfig);
+  const updateNodeConfig = useFlowStore((state) => state.updateNodeConfig);
+  const assignNodeConfig = useFlowStore((state) => state.assignNodeConfig);
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -934,10 +957,28 @@ function OutputDetail({ nodeId }: { nodeId: string }) {
 
   const config = node?.config_id ? nodeConfigs.find((entry) => entry.id === node.config_id) ?? null : null;
   const format = (config?.delta?.format as string) ?? 'EXR';
-  const pathsToThis = useMemo(
+
+  const handleFormatChange = async (nextFormat: string) => {
+    if (nextFormat === format) return;
+    if (config) {
+      await updateNodeConfig(config.id, {
+        delta: { ...(config.delta ?? {}), format: nextFormat },
+      });
+    } else {
+      const created = await createNodeConfig('output', node?.label ?? 'Output', { format: nextFormat });
+      if (created) {
+        await assignNodeConfig(nodeId, created.id);
+      }
+    }
+  };
+
+  const allPathsToThis = useMemo(
     () => resolvedPaths.filter((path) => path.outputNodeId === nodeId),
     [nodeId, resolvedPaths]
   );
+  const pathsToThis = splitIndex !== null && splitIndex !== undefined
+    ? allPathsToThis.slice(splitIndex, splitIndex + 1)
+    : allPathsToThis;
   const enabledCount = pathsToThis.filter((path) => path.enabled).length;
   const selectedCount = selectedPathKeys.size;
 
@@ -1097,7 +1138,25 @@ function OutputDetail({ nodeId }: { nodeId: string }) {
       </Section>
 
       <Section title="Output Format">
-        <div className="font-mono text-xs text-foreground">{format}</div>
+        <div className="grid grid-cols-4 gap-2">
+          {OUTPUT_FORMATS.map((fmt) => {
+            const isActive = format === fmt;
+            return (
+              <button
+                key={fmt}
+                type="button"
+                onClick={() => { void handleFormatChange(fmt); }}
+                className={`rounded border px-2 py-1.5 text-xs font-mono transition ${
+                  isActive
+                    ? 'border-fuchsia-400 bg-fuchsia-400/10 text-fuchsia-300'
+                    : 'border-border bg-surface-300 text-foreground hover:bg-surface-400'
+                }`}
+              >
+                {fmt}
+              </button>
+            );
+          })}
+        </div>
       </Section>
 
       <Section title={`Output Paths (${pathsToThis.length})`}>

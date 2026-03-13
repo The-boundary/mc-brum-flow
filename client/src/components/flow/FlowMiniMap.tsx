@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
+import { useReactFlow } from '@xyflow/react';
 import { useFlowStore } from '@/stores/flowStore';
 import { getFlowHandleLayout, getNodeHeight } from './flowLayout';
 import { getMiniMapNodeColor } from './NodeFlowView';
@@ -7,15 +8,19 @@ const NODE_WIDTH = 180;
 
 /**
  * Custom minimap built on the app's own Zustand flowStore.
- * No React Flow hooks needed — works anywhere in the component tree.
+ * Bidirectional: canvas panning updates the minimap, and dragging
+ * the viewport rectangle in the minimap pans the canvas.
  */
 export function FlowMiniMap() {
   const flowNodes = useFlowStore((s) => s.flowNodes);
   const flowEdges = useFlowStore((s) => s.flowEdges);
   const viewport = useFlowStore((s) => s.viewport);
   const updateViewport = useFlowStore((s) => s.updateViewport);
+  const reactFlow = useReactFlow();
   const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const [containerSize, setContainerSize] = useState({ w: 380, h: 160 });
+  const dragRef = useRef<{ startGraphX: number; startGraphY: number; vpStartX: number; vpStartY: number } | null>(null);
 
   // Track container size
   useEffect(() => {
@@ -71,13 +76,11 @@ export function FlowMiniMap() {
   const graphAR = vbW / vbH;
 
   if (graphAR > containerAR) {
-    // Graph is wider than container — expand height
     const newH = vbW / containerAR;
     const extraH = newH - vbH;
     minY -= extraH / 2;
     vbH = newH;
   } else {
-    // Graph is taller than container — expand width
     const newW = vbH * containerAR;
     const extraW = newW - vbW;
     minX -= extraW / 2;
@@ -98,26 +101,71 @@ export function FlowMiniMap() {
   // Stroke scales inversely with the viewBox so it looks consistent
   const strokeScale = vbW / 300;
 
-  const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    const svg = e.currentTarget;
+  /** Convert a mouse event on the SVG to graph coordinates */
+  const toGraphCoords = (e: React.PointerEvent<SVGSVGElement> | PointerEvent) => {
+    const svg = svgRef.current;
+    if (!svg) return { gx: 0, gy: 0 };
     const rect = svg.getBoundingClientRect();
     const ratioX = (e.clientX - rect.left) / rect.width;
     const ratioY = (e.clientY - rect.top) / rect.height;
-    const graphX = minX + ratioX * vbW;
-    const graphY = minY + ratioY * vbH;
-    updateViewport({
-      x: -(graphX - vpW / 2) * viewport.zoom,
-      y: -(graphY - vpH / 2) * viewport.zoom,
+    return { gx: minX + ratioX * vbW, gy: minY + ratioY * vbH };
+  };
+
+  /** Apply a new viewport center (graph coords) to both React Flow and the store */
+  const applyViewport = (centerX: number, centerY: number) => {
+    const next = {
+      x: -(centerX - vpW / 2) * viewport.zoom,
+      y: -(centerY - vpH / 2) * viewport.zoom,
       zoom: viewport.zoom,
-    });
+    };
+    reactFlow.setViewport(next, { duration: 0 });
+    updateViewport(next);
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    const { gx, gy } = toGraphCoords(e);
+
+    // Check if click is inside the viewport rectangle
+    const insideVp = gx >= vpX && gx <= vpX + vpW && gy >= vpY && gy <= vpY + vpH;
+
+    if (insideVp) {
+      // Start dragging — record offset from viewport top-left
+      dragRef.current = { startGraphX: gx, startGraphY: gy, vpStartX: vpX, vpStartY: vpY };
+      svgRef.current?.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    } else {
+      // Click outside viewport — center on click point
+      applyViewport(gx, gy);
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!dragRef.current) return;
+    const { gx, gy } = toGraphCoords(e);
+    const dx = gx - dragRef.current.startGraphX;
+    const dy = gy - dragRef.current.startGraphY;
+    const newVpX = dragRef.current.vpStartX + dx;
+    const newVpY = dragRef.current.vpStartY + dy;
+    // Center of new viewport rect
+    applyViewport(newVpX + vpW / 2, newVpY + vpH / 2);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (dragRef.current) {
+      svgRef.current?.releasePointerCapture(e.pointerId);
+      dragRef.current = null;
+    }
   };
 
   return (
     <div ref={containerRef} className="w-full h-full">
       <svg
+        ref={svgRef}
         viewBox={`${minX} ${minY} ${vbW} ${vbH}`}
         className="w-full h-full bg-surface-100 cursor-pointer"
-        onClick={handleClick}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
       >
         {/* Dim mask — everything outside the viewport */}
         <defs>
@@ -155,16 +203,17 @@ export function FlowMiniMap() {
           mask="url(#viewport-mask)"
         />
 
-        {/* Viewport border */}
+        {/* Viewport border — draggable */}
         <rect
           x={vpX}
           y={vpY}
           width={vpW}
           height={vpH}
-          fill="none"
+          fill="transparent"
           stroke="rgba(125, 211, 252, 0.95)"
           strokeWidth={1.5 * strokeScale}
           rx={4 * strokeScale}
+          className="cursor-grab active:cursor-grabbing"
         />
       </svg>
     </div>

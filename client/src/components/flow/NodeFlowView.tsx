@@ -610,6 +610,33 @@ export function NodeFlowView() {
     [onNodesChange, scheduleSave, updateNodePosition, linkSameType, moveParents, nodes, getUpstreamNodeIds]
   );
 
+  const connectAllOutputs = useCallback(
+    (sourceId: string, targetId: string): boolean => {
+      const existingEdges = useFlowStore.getState().flowEdges.filter((e) => e.source === sourceId);
+      let maxSourceIndex = -1;
+      for (const edge of existingEdges) {
+        const match = edge.source_handle?.match(/-(\d+)$/);
+        if (match) {
+          maxSourceIndex = Math.max(maxSourceIndex, Number.parseInt(match[1], 10));
+        }
+      }
+
+      const distinctSourceHandles = new Set(existingEdges.map((e) => e.source_handle).filter(Boolean));
+      const laneCount = Math.max(distinctSourceHandles.size, 1);
+
+      let changed = false;
+      for (let i = 0; i < laneCount; i++) {
+        const sourceHandle = `source-${maxSourceIndex + 1 + i}`;
+        const targetHandle = `target-${i}`;
+        if (storeAddEdge(sourceId, targetId, sourceHandle, targetHandle)) {
+          changed = true;
+        }
+      }
+      return changed;
+    },
+    [storeAddEdge]
+  );
+
   const onConnect: OnConnect = useCallback(
     (params: Connection) => {
       if (!params.source || !params.target) return;
@@ -617,16 +644,7 @@ export function NodeFlowView() {
       let changed = false;
 
       if (params.sourceHandle === 'source-all') {
-        // Connect-all: create one edge per output handle → sequential target handles
-        const sourceHandles = handleLayout.nodeHandles.get(params.source);
-        const outputIds = sourceHandles?.outputHandleIds ?? [];
-        if (outputIds.length === 0) return; // guard: no outputs to connect
-        outputIds.forEach((handleId, index) => {
-          const targetHandleId = `target-${index}`;
-          if (storeAddEdge(params.source!, params.target!, handleId, targetHandleId)) {
-            changed = true;
-          }
-        });
+        changed = connectAllOutputs(params.source, params.target);
       } else {
         // Normal single-handle connection — pass handle IDs from React Flow
         changed = storeAddEdge(
@@ -645,7 +663,7 @@ export function NodeFlowView() {
 
       if (changed) scheduleSave();
     },
-    [scheduleSave, storeAddEdge, nodes, handleLayout.nodeHandles]
+    [scheduleSave, storeAddEdge, nodes, connectAllOutputs]
   );
 
   const onConnectStart: OnConnectStart = useCallback((_event, params) => {
@@ -827,12 +845,7 @@ export function NodeFlowView() {
         const newest = newNodes[newNodes.length - 1];
         if (newest) {
           if (sourceHandleId === 'source-all') {
-            // Connect-all: wire all output handles
-            const sourceHandles = handleLayout.nodeHandles.get(sourceId);
-            const outputIds = sourceHandles?.outputHandleIds ?? [];
-            outputIds.forEach((handleId, index) => {
-              storeAddEdge(sourceId, newest.id, handleId, `target-${index}`);
-            });
+            connectAllOutputs(sourceId, newest.id);
           } else {
             storeAddEdge(sourceId, newest.id, sourceHandleId ?? null, null);
           }
@@ -848,7 +861,7 @@ export function NodeFlowView() {
       setContextMenu(null);
       setAutoSuggest(null);
     },
-    [addNode, scheduleSave, storeAddEdge, nodes, handleLayout.nodeHandles]
+    [addNode, scheduleSave, storeAddEdge, nodes, connectAllOutputs]
   );
 
   const handleConnectToExistingNode = useCallback(
@@ -856,13 +869,7 @@ export function NodeFlowView() {
       let changed = false;
 
       if (sourceHandleId === 'source-all') {
-        const sourceHandles = handleLayout.nodeHandles.get(sourceId);
-        const outputIds = sourceHandles?.outputHandleIds ?? [];
-        outputIds.forEach((handleId, index) => {
-          if (storeAddEdge(sourceId, targetId, handleId, `target-${index}`)) {
-            changed = true;
-          }
-        });
+        changed = connectAllOutputs(sourceId, targetId);
       } else {
         changed = storeAddEdge(sourceId, targetId, sourceHandleId ?? null, null);
       }
@@ -879,7 +886,7 @@ export function NodeFlowView() {
       }
       setAutoSuggest(null);
     },
-    [scheduleSave, selectNode, storeAddEdge, nodes, handleLayout.nodeHandles]
+    [scheduleSave, selectNode, storeAddEdge, nodes, connectAllOutputs]
   );
 
   useEffect(() => {
@@ -926,6 +933,7 @@ export function NodeFlowView() {
         onEdgeDoubleClick={onEdgeDoubleClick}
         onPaneClick={onPaneClick}
         onPaneContextMenu={onPaneContextMenu}
+        onMove={(_event, nextViewport) => updateViewport(nextViewport)}
         onMoveEnd={(_event, nextViewport) => updateViewport(nextViewport)}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}

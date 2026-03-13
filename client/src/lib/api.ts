@@ -148,6 +148,11 @@ export interface MaxHealthResult {
 // Max MCP Health
 export const checkMaxHealth = () => request<MaxHealthResult>('/max-health');
 
+// Max Instances
+export const fetchMaxInstances = () => request<any[]>('/max-instances');
+export const evalMaxScript = (instanceId: string, script: string) =>
+  request<{ result: string }>(`/max-instances/${instanceId}/eval`, { method: 'POST', body: JSON.stringify({ script }) });
+
 // Push to Max
 export const pushToMax = (sceneId: string, pathKey?: string, pathIndex?: number) =>
   request<any>('/push-to-max', { method: 'POST', body: JSON.stringify({ scene_id: sceneId, path_key: pathKey, path_index: pathIndex }) });

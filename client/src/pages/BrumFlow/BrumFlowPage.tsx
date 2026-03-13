@@ -56,6 +56,7 @@ export default function BrumFlowPage() {
     pushToMax,
     showToast,
     importCamerasFromMax,
+    scaffoldPipeline,
   } = useFlowStore();
 
   const toast = useFlowStore((s) => s.toast);
@@ -211,6 +212,12 @@ export default function BrumFlowPage() {
               icon={LayoutGrid}
               tooltip="Auto layout graph"
               onClick={requestAutoLayout}
+              disabled={viewMode !== 'flow' || loading}
+            />
+            <ToolbarButton
+              icon={Workflow}
+              tooltip="Scaffold typical pipeline"
+              onClick={scaffoldPipeline}
               disabled={viewMode !== 'flow' || loading}
             />
             <div className="mx-1 h-4 w-px bg-border" />

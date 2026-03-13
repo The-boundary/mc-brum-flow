@@ -498,3 +498,24 @@ describe('getSuggestedExistingTargetNodes', () => {
     expect(result.map((n) => n.id)).toContain('ar');
   });
 });
+
+// ── source-all handle assignment ──
+
+describe('source-all handle assignment', () => {
+  it('assigns sequential source handles without gaps', () => {
+    const nodes: FlowNode[] = [
+      { id: 'a', type: 'layerSetup', label: 'A', position: { x: 0, y: 0 } },
+      { id: 'b', type: 'aspectRatio', label: 'B', position: { x: 100, y: 0 } },
+      { id: 'c', type: 'aspectRatio', label: 'C', position: { x: 100, y: 100 } },
+    ];
+    const edges: FlowEdge[] = [
+      { id: 'e1', source: 'a', target: 'b', source_handle: 'source-0', target_handle: 'target-0' },
+      { id: 'e2', source: 'a', target: 'b', source_handle: 'source-1', target_handle: 'target-1' },
+      { id: 'e3', source: 'a', target: 'c', source_handle: 'source-2', target_handle: 'target-0' },
+      { id: 'e4', source: 'a', target: 'c', source_handle: 'source-3', target_handle: 'target-1' },
+    ];
+    const layout = getFlowHandleLayout(nodes, edges);
+    const aHandles = layout.nodeHandles.get('a')!;
+    expect(aHandles.outputHandleIds).toEqual(['source-0', 'source-1', 'source-2', 'source-3']);
+  });
+});

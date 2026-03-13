@@ -130,6 +130,7 @@ interface FlowState {
   initSocket: () => void;
   checkMaxHealth: () => Promise<void>;
   importCamerasFromMax: () => Promise<number>;
+  refreshLayersFromMax: (nodeId: string) => Promise<void>;
   pushToMax: (pathKey?: string, pathIndex?: number) => Promise<PushToMaxResult>;
   submitRender: (pathIndices: number[]) => Promise<boolean>;
   addSyncLog: (entry: Omit<SyncLogEntry, 'id' | 'timestamp'>) => void;
@@ -137,6 +138,7 @@ interface FlowState {
   dismissToast: () => void;
   clearMaxDebugLog: () => void;
   dismissCameraMatchPrompt: () => void;
+  scaffoldPipeline: () => void;
 }
 
 function isValidCamera(value: unknown): value is Camera {
@@ -994,6 +996,60 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     }
   },
 
+  refreshLayersFromMax: async (nodeId) => {
+    const { maxTcpInstances, nodeConfigs, flowNodes } = get();
+    const node = flowNodes.find((n) => n.id === nodeId);
+    if (!node || node.type !== 'layerSetup') return;
+
+    const instance = maxTcpInstances[0];
+    if (!instance) {
+      get().showToast('No 3ds Max instance connected', 'error');
+      return;
+    }
+
+    try {
+      const { result } = await api.evalMaxScript(instance.id, `(
+        local layerNames = #()
+        for i = 0 to LayerManager.count - 1 do (
+          local layer = LayerManager.getLayer i
+          append layerNames layer.name
+        )
+        layerNames as string
+      )`);
+
+      const cleaned = result.replace(/^#\(/, '').replace(/\)$/, '');
+      const layers = cleaned
+        .split(',')
+        .map((s: string) => s.trim().replace(/^"|"$/g, ''))
+        .filter(Boolean);
+
+      if (layers.length === 0) {
+        get().showToast('No layers found in scene', 'info');
+        return;
+      }
+
+      let config = node.config_id
+        ? nodeConfigs.find((c) => c.id === node.config_id) ?? null
+        : null;
+
+      if (!config) {
+        config = await get().createNodeConfig('layerSetup', node.label, { layers });
+        if (config) {
+          await get().assignNodeConfig(nodeId, config.id);
+        }
+      } else {
+        await get().updateNodeConfig(config.id, {
+          delta: { ...(config.delta ?? {}), layers },
+        });
+      }
+
+      get().showToast(`Refreshed ${layers.length} layer${layers.length > 1 ? 's' : ''} from Max`, 'success');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to refresh layers';
+      get().showToast(message, 'error');
+    }
+  },
+
   pushToMax: async (pathKey, pathIndex) => {
     const { activeSceneId } = get();
     if (!activeSceneId) return { ok: false as const, reason: 'error' as const, message: 'No active scene' };
@@ -1107,4 +1163,57 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   dismissToast: () => set({ toast: null }),
   clearMaxDebugLog: () => set({ maxDebugLog: [] }),
   dismissCameraMatchPrompt: () => set({ cameraMatchPrompt: null }),
+
+  scaffoldPipeline: () => {
+    const PIPELINE_STAGES: { type: NodeType; label: string }[] = [
+      { type: 'camera', label: 'Camera' },
+      { type: 'group', label: 'Group' },
+      { type: 'lightSetup', label: 'Light Setup' },
+      { type: 'toneMapping', label: 'Tone Mapping' },
+      { type: 'layerSetup', label: 'Layer Setup' },
+      { type: 'aspectRatio', label: 'Aspect Ratio' },
+      { type: 'stageRev', label: 'Rev B' },
+      { type: 'deadline', label: 'Deadline' },
+      { type: 'output', label: 'Output' },
+    ];
+
+    const xStart = 80;
+    const xGap = 220;
+    const yCenter = 200;
+    const nodes: FlowNode[] = [];
+    const edges: FlowEdge[] = [];
+
+    for (let i = 0; i < PIPELINE_STAGES.length; i++) {
+      const stage = PIPELINE_STAGES[i];
+      const id = genNodeId();
+      nodes.push({
+        id,
+        type: stage.type,
+        label: stage.label,
+        position: { x: xStart + i * xGap, y: yCenter },
+        ...(stage.type === 'output' && { enabled: true }),
+        ...(stage.type === 'group' && { hide_previous: false }),
+      });
+
+      if (i > 0) {
+        const prevId = nodes[i - 1].id;
+        edges.push({
+          id: `${prevId}__${id}`,
+          source: prevId,
+          target: id,
+          source_handle: 'source-0',
+          target_handle: 'target-0',
+        });
+      }
+    }
+
+    set((s) => ({
+      flowNodes: [...s.flowNodes, ...nodes],
+      flowEdges: [...s.flowEdges, ...edges],
+      selectedNodeId: nodes[0]?.id ?? s.selectedNodeId,
+    }));
+
+    scheduleStoreSave(get().saveGraph, get().resolvePaths, true);
+    get().showToast('Scaffolded typical pipeline', 'success');
+  },
 }));
