@@ -149,7 +149,7 @@ export function getFlowHandleLayout(flowNodes: FlowNode[], flowEdges: FlowEdge[]
 
 const NODE_WIDTH = 180;
 const NODE_BASE_HEIGHT = 60;
-const NODE_HANDLE_SLOT = 24;
+const NODE_HANDLE_SLOT = 20;
 
 export function getNodeHeight(handleCount: number): number {
   return NODE_BASE_HEIGHT + Math.max(0, handleCount - 1) * NODE_HANDLE_SLOT;
@@ -163,7 +163,7 @@ export function getAutoLayoutPositions(flowNodes: FlowNode[], flowEdges: FlowEdg
   g.setGraph({
     rankdir: 'LR',
     nodesep: 60,
-    ranksep: 70,
+    ranksep: 80,
     marginx: 40,
     marginy: 40,
   });
@@ -185,8 +185,8 @@ export function getAutoLayoutPositions(flowNodes: FlowNode[], flowEdges: FlowEdg
   for (const node of flowNodes) {
     const dagreNode = g.node(node.id);
     positions[node.id] = {
-      x: dagreNode.x - NODE_WIDTH / 2,
-      y: dagreNode.y - dagreNode.height / 2,
+      x: Math.round((dagreNode.x - NODE_WIDTH / 2) / 20) * 20,
+      y: Math.round((dagreNode.y - dagreNode.height / 2) / 20) * 20,
     };
   }
 
