@@ -74,6 +74,12 @@ const STAGE_REV_PRESETS = [
   { label: 'Rev C', longestEdge: 6000 },
 ] as const;
 
+const DEADLINE_TARGETS = [
+  { label: 'Local', pool: 'local' },
+  { label: 'Deadline Local', pool: 'deadline-local' },
+  { label: 'Deadline Cloud', pool: 'deadline-cloud' },
+] as const;
+
 const OUTPUT_FORMATS = ['JPG', 'PNG', 'EXR', 'CXR'] as const;
 
 const STAGE_REV_FIELDS: EditableFieldSpec[] = [
@@ -686,6 +692,23 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
     }
   };
 
+  const handleDeadlineTarget = async (label: string, pool: string) => {
+    let preset = configsForType.find((entry) => entry.label === label) ?? null;
+
+    if (!preset) {
+      preset = await createNodeConfig('deadline', label, { pool });
+    } else {
+      preset = await updateNodeConfig(preset.id, {
+        label,
+        delta: { ...(preset.delta ?? {}), pool },
+      });
+    }
+
+    if (preset) {
+      await assignNodeConfig(nodeId, preset.id);
+    }
+  };
+
   return (
     <div className="p-4 space-y-5">
       <NodeHeader label={node.label} type={node.type} />
@@ -718,7 +741,7 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
         </Section>
       )}
 
-      {node.type !== 'override' && node.type !== 'stageRev' && (
+      {node.type !== 'override' && node.type !== 'stageRev' && node.type !== 'layerSetup' && node.type !== 'deadline' && (
         <Section title="Preset">
           <div className="space-y-2">
             <select
@@ -773,6 +796,34 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
         </Section>
       )}
 
+
+      {/* Deadline: render target selection */}
+      {node.type === 'deadline' && (
+        <Section title="Render Target">
+          <div className="grid grid-cols-3 gap-2">
+            {DEADLINE_TARGETS.map((target) => {
+              const currentPool = (config?.delta?.pool as string) ?? '';
+              const isActive = currentPool === target.pool || (!currentPool && target.pool === 'local');
+              return (
+                <button
+                  key={target.pool}
+                  type="button"
+                  onClick={() => {
+                    void handleDeadlineTarget(target.label, target.pool);
+                  }}
+                  className={`rounded border px-2 py-1.5 text-xs transition ${
+                    isActive
+                      ? 'border-purple-400 bg-purple-400/10 text-purple-300'
+                      : 'border-border bg-surface-300 text-foreground hover:bg-surface-400'
+                  }`}
+                >
+                  {target.label}
+                </button>
+              );
+            })}
+          </div>
+        </Section>
+      )}
 
       {/* Layer setup: show layers from the assigned config */}
       {node.type === 'layerSetup' && (
