@@ -19,6 +19,146 @@ interface MaxMcpConnectionOptions {
   port?: number;
 }
 
+// ── Connection Pool ──
+//
+// NOTE: Tested 2026-03-13 — the 3ds Max MCP listener (192.168.0.72:8765)
+// closes the connection after each response (no keep-alive). The pool
+// infrastructure below still works correctly: acquireSocket creates fresh
+// connections, and releaseSocket detects the closed socket and destroys it.
+// If the listener is updated to support keep-alive, pooling will activate
+// automatically with no code changes needed.
+
+const MAX_POOL_SIZE = 3;
+const IDLE_TIMEOUT_MS = 30_000;
+
+interface PoolEntry {
+  socket: net.Socket;
+  idleTimer: ReturnType<typeof setTimeout>;
+}
+
+/** Pool keyed by "host:port" → array of idle entries */
+const pool = new Map<string, PoolEntry[]>();
+
+function poolKey(host: string, port: number): string {
+  return `${host}:${port}`;
+}
+
+/**
+ * Acquire a connected socket — returns one from the pool if available,
+ * otherwise creates and connects a fresh one.
+ */
+export function acquireSocket(host: string, port: number): Promise<net.Socket> {
+  const key = poolKey(host, port);
+  const entries = pool.get(key);
+
+  // Try to reuse an idle socket
+  while (entries && entries.length > 0) {
+    const entry = entries.pop()!;
+    clearTimeout(entry.idleTimer);
+
+    if (!entry.socket.destroyed && entry.socket.writable) {
+      return Promise.resolve(entry.socket);
+    }
+    // Socket became unusable while idle — discard it
+    entry.socket.destroy();
+  }
+
+  // Create a fresh connection
+  return new Promise<net.Socket>((resolve, reject) => {
+    const socket = net.createConnection({ host, port });
+
+    const onError = (err: Error) => {
+      socket.removeListener('connect', onConnect);
+      reject(err);
+    };
+
+    const onConnect = () => {
+      socket.removeListener('error', onError);
+      resolve(socket);
+    };
+
+    socket.once('connect', onConnect);
+    socket.once('error', onError);
+  });
+}
+
+/**
+ * Return a socket to the pool for reuse.
+ * If the pool for that key is full, the socket is destroyed instead.
+ */
+export function releaseSocket(socket: net.Socket, host: string, port: number): void {
+  if (socket.destroyed || !socket.writable) {
+    socket.destroy();
+    return;
+  }
+
+  const key = poolKey(host, port);
+  let entries = pool.get(key);
+  if (!entries) {
+    entries = [];
+    pool.set(key, entries);
+  }
+
+  if (entries.length >= MAX_POOL_SIZE) {
+    socket.destroy();
+    return;
+  }
+
+  // Remove all per-request listeners so they don't fire on pooled sockets
+  socket.removeAllListeners('data');
+  socket.removeAllListeners('timeout');
+  socket.removeAllListeners('end');
+
+  // Set up idle expiry and error cleanup
+  const idleTimer = setTimeout(() => {
+    removeFromPool(key, socket);
+    socket.destroy();
+  }, IDLE_TIMEOUT_MS);
+
+  // If the socket errors while idle, remove it from the pool
+  socket.once('error', () => {
+    removeFromPool(key, socket);
+    socket.destroy();
+  });
+
+  entries.push({ socket, idleTimer });
+}
+
+function removeFromPool(key: string, socket: net.Socket): void {
+  const entries = pool.get(key);
+  if (!entries) return;
+
+  const idx = entries.findIndex((e) => e.socket === socket);
+  if (idx !== -1) {
+    clearTimeout(entries[idx].idleTimer);
+    entries.splice(idx, 1);
+  }
+  if (entries.length === 0) {
+    pool.delete(key);
+  }
+}
+
+/**
+ * Destroy all pooled connections. Call on process shutdown.
+ */
+export function drainPool(): void {
+  for (const [, entries] of pool) {
+    for (const entry of entries) {
+      clearTimeout(entry.idleTimer);
+      entry.socket.destroy();
+    }
+  }
+  pool.clear();
+}
+
+/** Expose pool size for testing. */
+export function _getPoolSize(host: string, port: number): number {
+  const entries = pool.get(poolKey(host, port));
+  return entries ? entries.length : 0;
+}
+
+// ── Logging ──
+
 function emitMaxLog(entry: {
   level: 'info' | 'error' | 'warn';
   direction: 'outgoing' | 'incoming' | 'system';
@@ -34,6 +174,8 @@ function emitMaxLog(entry: {
     ...entry,
   });
 }
+
+// ── Core Command ──
 
 export async function sendMaxMcpCommand(
   command: string,
@@ -60,20 +202,21 @@ export async function sendMaxMcpCommand(
     port,
   });
 
-  return new Promise<MaxMcpResponse>((resolve, reject) => {
-    const socket = net.createConnection({
-      host,
-      port,
-    });
+  const socket = await acquireSocket(host, port);
+  const startedAt = performance.now();
 
+  return new Promise<MaxMcpResponse>((resolve, reject) => {
     let responseData = '';
     let settled = false;
-    const startedAt = performance.now();
 
     const finish = (fn: () => void) => {
       if (settled) return;
       settled = true;
-      socket.destroy();
+      // Remove per-request listeners before releasing or destroying
+      socket.removeAllListeners('data');
+      socket.removeAllListeners('timeout');
+      socket.removeAllListeners('end');
+      socket.removeAllListeners('error');
       fn();
     };
 
@@ -93,10 +236,6 @@ export async function sendMaxMcpCommand(
 
     socket.setTimeout(timeoutMs);
 
-    socket.on('connect', () => {
-      socket.write(`${payload}\n`, 'utf8');
-    });
-
     socket.on('data', (chunk) => {
       responseData += chunk.toString('utf8');
       if (!responseData.includes('\n')) {
@@ -105,8 +244,15 @@ export async function sendMaxMcpCommand(
 
       finish(() => {
         const elapsed = Math.round(performance.now() - startedAt);
-        const normalized = stripBom(responseData).trim();
+
+        // Split at first newline — anything after is trailing bytes
+        const newlineIdx = responseData.indexOf('\n');
+        const firstLine = responseData.slice(0, newlineIdx);
+        const hasTrailingBytes = responseData.length > newlineIdx + 1;
+
+        const normalized = stripBom(firstLine).trim();
         if (!normalized) {
+          socket.destroy();
           rejectWithLog(new Error('Empty response from 3ds Max MCP listener'));
           return;
         }
@@ -115,11 +261,13 @@ export async function sendMaxMcpCommand(
         try {
           parsed = JSON.parse(normalized) as MaxMcpResponse;
         } catch (error) {
+          socket.destroy();
           rejectWithLog(new Error(`Invalid JSON from 3ds Max MCP listener: ${String(error)}`));
           return;
         }
 
         if (parsed.requestId && parsed.requestId !== requestId) {
+          socket.destroy();
           rejectWithLog(new Error(`Mismatched requestId from 3ds Max MCP listener: expected ${requestId}, got ${parsed.requestId}`));
           return;
         }
@@ -131,6 +279,7 @@ export async function sendMaxMcpCommand(
         };
 
         if (!parsed.success) {
+          socket.destroy();
           rejectWithLog(new Error(parsed.error || 'Unknown 3ds Max MCP listener error'));
           return;
         }
@@ -145,18 +294,27 @@ export async function sendMaxMcpCommand(
           port,
         });
 
+        // Only pool sockets with a clean read — no trailing bytes
+        if (hasTrailingBytes) {
+          socket.destroy();
+        } else {
+          releaseSocket(socket, host, port);
+        }
+
         resolve(parsed);
       });
     });
 
     socket.on('timeout', () => {
       finish(() => {
+        socket.destroy();
         rejectWithLog(new Error(`3ds Max MCP listener timed out after ${timeoutMs}ms (${host}:${port})`));
       });
     });
 
     socket.on('error', (error) => {
       finish(() => {
+        socket.destroy();
         rejectWithLog(new Error(`3ds Max MCP connection failed: ${error.message}`));
       });
     });
@@ -167,11 +325,17 @@ export async function sendMaxMcpCommand(
       }
 
       finish(() => {
+        socket.destroy();
         rejectWithLog(new Error('3ds Max MCP listener closed the connection without a response'));
       });
     });
+
+    // Socket is already connected — write immediately
+    socket.write(`${payload}\n`, 'utf8');
   });
 }
+
+// ── Convenience Wrappers ──
 
 export async function executeMaxMcpScript(command: string, timeoutMs?: number, options?: MaxMcpConnectionOptions) {
   return sendMaxMcpCommand(command, 'maxscript', timeoutMs, options);

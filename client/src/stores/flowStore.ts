@@ -3,65 +3,12 @@ import { ApiError } from '@/lib/api';
 import * as api from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 import { getFlowHandleLayout } from '@/components/flow/flowLayout';
-import { isValidFlowConnection, type Scene, type Camera, type StudioDefault, type NodeConfig, type FlowNode, type FlowEdge, type FlowConfig, type NodeType, type MaxSyncState } from '@shared/types';
+import type { Scene, Camera, StudioDefault, NodeConfig, FlowNode, FlowEdge, FlowConfig, NodeType, MaxSyncState } from '@shared/types';
 import type { MaxHealthResult } from '@/lib/api';
 
-export interface ResolvedPath {
-  pathKey: string;
-  nodeIds: string[];
-  outputNodeId: string;
-  cameraName: string;
-  filename: string;
-  resolvedConfig: Record<string, unknown>;
-  enabled: boolean;
-  stageLabels: Partial<Record<'lightSetup' | 'toneMapping' | 'layerSetup' | 'aspectRatio' | 'stageRev' | 'deadline' | 'override', string>>;
-  warnings?: string[];
-}
-
-export type PushToMaxResult =
-  | { ok: true }
-  | { ok: false; reason: 'camera-match' | 'error'; message?: string };
-
-export interface SyncLogEntry {
-  id: string;
-  timestamp: string;
-  status: 'success' | 'error' | 'syncing' | 'queued';
-  reason: string;
-  cameraName?: string;
-  pathKey?: string;
-  error?: string;
-  durationMs?: number;
-}
-
-export interface CameraMatchPrompt {
-  nodeId: string;
-  pathKey?: string;
-  requestedCameraName: string;
-  availableCameras: Camera[];
-}
-
-export interface MaxTcpInstance {
-  id: string;
-  hostname: string;
-  username: string;
-  pid: number;
-  maxVersion?: string;
-  currentFile: string;
-  connectedAt: string;
-  lastHeartbeat: string;
-}
-
-export interface MaxDebugLogEntry {
-  id: string;
-  timestamp: string;
-  level: 'info' | 'error' | 'warn';
-  direction: 'outgoing' | 'incoming' | 'system';
-  summary: string;
-  detail?: string;
-  durationMs?: number;
-  host?: string;
-  port?: number;
-}
+// Re-export shared types for backward compatibility
+export type { ResolvedPath, PushToMaxResult, SyncLogEntry, CameraMatchPrompt, MaxTcpInstance, MaxDebugLogEntry } from './types';
+import type { ResolvedPath, PushToMaxResult, SyncLogEntry, CameraMatchPrompt, MaxTcpInstance, MaxDebugLogEntry } from './types';
 
 interface FlowState {
   // Data
@@ -191,6 +138,85 @@ function scheduleStoreSave(
 
 function areSerializedValuesEqual(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+const DIRECT_CONNECTIONS: Record<NodeType, NodeType[]> = {
+  camera: ['group', 'lightSetup'],
+  group: ['group', 'lightSetup'],
+  lightSetup: ['override', 'toneMapping'],
+  toneMapping: ['override', 'layerSetup'],
+  layerSetup: ['override', 'aspectRatio'],
+  aspectRatio: ['override', 'stageRev'],
+  stageRev: ['override', 'deadline'],
+  override: [],
+  deadline: ['output'],
+  output: [],
+};
+
+const OVERRIDABLE_SOURCE_TYPES = new Set<NodeType>([
+  'lightSetup',
+  'toneMapping',
+  'layerSetup',
+  'aspectRatio',
+  'stageRev',
+]);
+
+function getNextPipelineType(type: NodeType): NodeType | null {
+  return (DIRECT_CONNECTIONS[type] ?? []).find((targetType) => targetType !== 'override') ?? null;
+}
+
+function isValidFlowConnection(sourceNodeId: string, targetNodeId: string, flowNodes: FlowNode[], flowEdges: FlowEdge[]) {
+  if (sourceNodeId === targetNodeId) return false;
+
+  const nodesById = new Map(flowNodes.map((node) => [node.id, node]));
+  const sourceNode = nodesById.get(sourceNodeId);
+  const targetNode = nodesById.get(targetNodeId);
+  if (!sourceNode || !targetNode) return false;
+
+  if (sourceNode.type !== 'override') {
+    return (DIRECT_CONNECTIONS[sourceNode.type] ?? []).includes(targetNode.type);
+  }
+
+  const incoming = new Map<string, FlowEdge[]>();
+  for (const edge of flowEdges) {
+    const existing = incoming.get(edge.target);
+    if (existing) {
+      existing.push(edge);
+    } else {
+      incoming.set(edge.target, [edge]);
+    }
+  }
+
+  const queue = [sourceNodeId];
+  const visited = new Set<string>();
+  const continuationTypes = new Set<NodeType>();
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift();
+    if (!nodeId || visited.has(nodeId)) continue;
+    visited.add(nodeId);
+
+    for (const edge of incoming.get(nodeId) ?? []) {
+      const upstreamNode = nodesById.get(edge.source);
+      if (!upstreamNode) continue;
+
+      if (upstreamNode.type === 'override') {
+        queue.push(upstreamNode.id);
+        continue;
+      }
+
+      if (!OVERRIDABLE_SOURCE_TYPES.has(upstreamNode.type)) {
+        continue;
+      }
+
+      const nextType = getNextPipelineType(upstreamNode.type);
+      if (nextType) {
+        continuationTypes.add(nextType);
+      }
+    }
+  }
+
+  return continuationTypes.size === 1 && continuationTypes.has(targetNode.type);
 }
 
 function normalizeFlowEdges(flowNodes: FlowNode[], flowEdges: FlowEdge[]) {
@@ -1208,9 +1234,29 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   },
 }));
 
-/** Selector hook: find a single flow node by ID */
-export function useFlowNode(nodeId: string | null | undefined) {
-  return useFlowStore((state) =>
-    nodeId ? state.flowNodes.find((entry) => entry.id === nodeId) ?? null : null
-  );
-}
+// ---------------------------------------------------------------------------
+// Re-exports: sub-stores + coordinator
+// ---------------------------------------------------------------------------
+// New code should import from the focused sub-stores directly.
+// These re-exports exist so that flowStore.ts acts as a barrel during
+// the incremental migration — existing consumers keep working.
+
+export { useSceneStore, isValidCamera } from './sceneStore';
+export { useConfigStore } from './configStore';
+export { useFlowGraphStore, useFlowNode, genNodeId, normalizeFlowEdges, areSerializedValuesEqual } from './flowGraphStore';
+export { useOutputStore } from './outputStore';
+export { useSyncStore } from './syncStore';
+export { useUiStore } from './uiStore';
+export type { ViewMode } from './uiStore';
+
+export {
+  scheduleStoreSave,
+  saveGraph,
+  resolvePaths,
+  loadAll,
+  setActiveScene,
+  initSocket,
+  assignNodeConfig,
+  assignNodeCamera,
+  scaffoldPipeline,
+} from './flowCoordinator';

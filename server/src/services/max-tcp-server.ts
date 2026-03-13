@@ -190,6 +190,14 @@ function processMessage(
 
   switch (msg.type) {
     case 'register': {
+      const authToken = config.maxTcpAuthToken;
+      if (authToken && msg.auth_token !== authToken) {
+        const errorPayload = JSON.stringify({ type: 'error', message: 'Authentication failed' }) + '\n';
+        socket.end(errorPayload, 'utf8');
+        logger.warn({ remoteAddr: `${socket.remoteAddress}:${socket.remotePort}` }, 'Max TCP: rejected unauthenticated register');
+        return null;
+      }
+
       if (typeof msg.instance_id === 'string') {
         instanceId = msg.instance_id;
       } else {
@@ -229,6 +237,10 @@ function processMessage(
     }
 
     case 'heartbeat': {
+      if (!currentInstanceId) {
+        logger.warn({ remoteAddr: `${socket.remoteAddress}:${socket.remotePort}` }, 'Max TCP: heartbeat from unregistered connection, ignoring');
+        return null;
+      }
       if (instanceId) {
         const instance = instances.get(instanceId);
         if (instance) {
@@ -242,6 +254,10 @@ function processMessage(
     }
 
     case 'eval_result': {
+      if (!currentInstanceId) {
+        logger.warn({ remoteAddr: `${socket.remoteAddress}:${socket.remotePort}` }, 'Max TCP: eval_result from unregistered connection, ignoring');
+        return null;
+      }
       const commandId = typeof msg.command_id === 'string' ? msg.command_id : '';
       const pending = pendingCommands.get(commandId);
       if (pending) {

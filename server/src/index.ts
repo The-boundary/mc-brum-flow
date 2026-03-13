@@ -12,7 +12,8 @@ import routes from './routes/index.js';
 import authRouter from './routes/auth.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { registerSocketServer } from './services/socket-events.js';
-import { startMaxTcpServer } from './services/max-tcp-server.js';
+import { startMaxTcpServer, stopMaxTcpServer } from './services/max-tcp-server.js';
+import { drainPool } from './services/max-mcp-client.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -79,3 +80,19 @@ server.listen(config.port, () => {
   logger.info(`Environment: ${config.nodeEnv}`);
   startMaxTcpServer();
 });
+
+// ── Graceful Shutdown ──
+
+function shutdown(signal: string) {
+  logger.info(`${signal} received — shutting down`);
+  drainPool();
+  stopMaxTcpServer();
+  io.close();
+  server.close(() => {
+    logger.info('HTTP server closed');
+    process.exit(0);
+  });
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

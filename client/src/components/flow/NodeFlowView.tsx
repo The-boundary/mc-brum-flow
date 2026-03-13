@@ -20,13 +20,24 @@ import {
   useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Keyboard } from 'lucide-react';
+import {
+  AlertTriangle,
+  Camera,
+  Contrast,
+  FileOutput,
+  FolderOpen,
+  Gauge,
+  Keyboard,
+  Layers,
+  RectangleHorizontal,
+  Server,
+  Sun,
+} from 'lucide-react';
 
 import type { FlowEdge, FlowNode, NodeType } from '@shared/types';
 
 import { useFlowStore, type ResolvedPath } from '@/stores/flowStore';
 import { useUiStore } from '@/stores/uiStore';
-import { NODE_TYPE_REGISTRY, getNodeTypeLabel } from '@/lib/nodeTypeRegistry';
 
 import { ColoredEdge } from './ColoredEdge';
 import {
@@ -71,7 +82,24 @@ interface PendingConnectionState {
   sourceHandleId?: string | null;
 }
 
-function getHiddenPreviousNodeIds(flowNodes: FlowNode[], flowEdges: FlowEdge[]) {
+const NODE_TYPE_META: Record<NodeType, { label: string; icon: typeof Camera }> = {
+  camera: { label: 'Camera', icon: Camera },
+  group: { label: 'Group', icon: FolderOpen },
+  lightSetup: { label: 'Light Setup', icon: Sun },
+  toneMapping: { label: 'Tone Mapping', icon: Contrast },
+  layerSetup: { label: 'Layer Setup', icon: Layers },
+  aspectRatio: { label: 'Aspect Ratio', icon: RectangleHorizontal },
+  stageRev: { label: 'Stage Rev', icon: Gauge },
+  override: { label: 'Override', icon: AlertTriangle },
+  deadline: { label: 'Deadline', icon: Server },
+  output: { label: 'Output', icon: FileOutput },
+};
+
+function formatNodeTypeLabel(type: NodeType) {
+  return NODE_TYPE_META[type]?.label ?? type;
+}
+
+export function getHiddenPreviousNodeIds(flowNodes: FlowNode[], flowEdges: FlowEdge[]) {
   const incomingEdges = new Map<string, FlowEdge[]>();
   const hiddenNodeIds = new Set<string>();
 
@@ -101,6 +129,33 @@ function getHiddenPreviousNodeIds(flowNodes: FlowNode[], flowEdges: FlowEdge[]) 
   }
 
   return hiddenNodeIds;
+}
+
+export function getMiniMapNodeColor(type?: string | null) {
+  switch (type) {
+    case 'camera':
+      return '#34d399';
+    case 'output':
+      return '#e879f9';
+    case 'override':
+      return '#f87171';
+    case 'group':
+      return '#fb923c';
+    case 'lightSetup':
+      return '#fbbf24';
+    case 'toneMapping':
+      return '#60a5fa';
+    case 'layerSetup':
+      return '#22d3ee';
+    case 'aspectRatio':
+      return '#2dd4bf';
+    case 'stageRev':
+      return '#4ade80';
+    case 'deadline':
+      return '#c084fc';
+    default:
+      return 'hsl(185 63% 60%)';
+  }
 }
 
 function BranchConnectionLine({
@@ -862,7 +917,7 @@ export function NodeFlowView() {
     void reactFlowInstance.zoomOut({ duration: 200 });
   }, [zoomOutNonce, reactFlowInstance]);
 
-  const allNodeTypes = Object.entries(NODE_TYPE_REGISTRY);
+  const allNodeTypes = Object.entries(NODE_TYPE_META);
 
   return (
     <div className="w-full h-full relative">
@@ -926,7 +981,7 @@ export function NodeFlowView() {
         >
           <div className="px-3 py-1 text-[10px] text-fg-dim uppercase tracking-wider">Add & Connect</div>
           {autoSuggest.validTypes.map((type) => {
-            const meta = NODE_TYPE_REGISTRY[type];
+            const meta = NODE_TYPE_META[type];
             return (
               <button
                 key={type}
@@ -944,7 +999,7 @@ export function NodeFlowView() {
               <div className="mx-3 my-1 h-px bg-border" />
               <div className="px-3 py-1 text-[10px] text-fg-dim uppercase tracking-wider">Connect Existing</div>
               {existingAutoSuggestTargets.map((node) => {
-                const meta = NODE_TYPE_REGISTRY[node.type];
+                const meta = NODE_TYPE_META[node.type];
                 return (
                   <button
                     key={node.id}
@@ -954,7 +1009,7 @@ export function NodeFlowView() {
                     <meta.icon className="w-3.5 h-3.5 text-muted-foreground" />
                     <div className="min-w-0">
                       <div className="truncate">{node.label}</div>
-                      <div className="text-[10px] text-fg-dim">{getNodeTypeLabel(node.type)}</div>
+                      <div className="text-[10px] text-fg-dim">{formatNodeTypeLabel(node.type)}</div>
                     </div>
                   </button>
                 );
