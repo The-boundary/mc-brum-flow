@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Background,
   BackgroundVariant,
   getSmoothStepPath,
+  MiniMap,
   ReactFlow,
   SelectionMode,
   type Connection,
@@ -230,8 +232,10 @@ export function NodeFlowView() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [autoSuggest, setAutoSuggest] = useState<AutoSuggestState | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [minimapPortal, setMinimapPortal] = useState<HTMLElement | null>(null);
   const linkSameType = useUiStore((s) => s.linkSameType);
   const moveParents = useUiStore((s) => s.moveParents);
+  const detailPanelOpen = useUiStore((s) => s.detailPanelOpen);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingConnectionRef = useRef<PendingConnectionState | null>(null);
   const autoSuggestJustSetRef = useRef(false);
@@ -242,6 +246,15 @@ export function NodeFlowView() {
   const lastZoomOutNonceRef = useRef(zoomOutNonce);
   const reactFlowInstance = useReactFlow();
   const initialViewport = useMemo(() => viewport, [activeSceneId]);
+
+  // Re-resolve minimap portal target when detail panel toggles
+  useEffect(() => {
+    // Small delay to let the DOM render after panel open/close
+    const timer = setTimeout(() => {
+      setMinimapPortal(document.getElementById('minimap-portal'));
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [detailPanelOpen]);
 
   const hiddenPreviousNodeIds = useMemo(
     () => getHiddenPreviousNodeIds(flowNodes, storeEdges),
@@ -811,6 +824,22 @@ export function NodeFlowView() {
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(190 12% 20%)" />
+        {minimapPortal && createPortal(
+          <MiniMap
+            className="!static !bg-surface-100 !border-0 !rounded-none !m-0 !p-0 !shadow-none"
+            style={{ width: '100%', height: '100%' }}
+            nodeColor={(node) => getMiniMapNodeColor(node.type)}
+            nodeStrokeColor="rgba(15, 23, 42, 0.9)"
+            nodeStrokeWidth={1}
+            maskColor="rgba(2, 6, 23, 0.45)"
+            maskStrokeColor="rgba(125, 211, 252, 0.95)"
+            maskStrokeWidth={1.5}
+            pannable
+            zoomable={false}
+            offsetScale={2}
+          />,
+          minimapPortal,
+        )}
       </ReactFlow>
 
       {contextMenu && (

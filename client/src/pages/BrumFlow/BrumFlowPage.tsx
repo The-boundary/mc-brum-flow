@@ -5,10 +5,10 @@ import {
   AlertCircle, Wifi, WifiOff, Camera, Trash2, Terminal, X, Info, CheckCircle2,
   Link2, Unlink2, GitFork,
 } from 'lucide-react';
-import { MiniMap, ReactFlowProvider } from '@xyflow/react';
+import { ReactFlowProvider } from '@xyflow/react';
 import { useUiStore } from '@/stores/uiStore';
 import { useFlowStore } from '@/stores/flowStore';
-import { getMiniMapNodeColor, NodeFlowView } from '@/components/flow/NodeFlowView';
+import { NodeFlowView } from '@/components/flow/NodeFlowView';
 import { MatrixView } from '@/components/matrix/MatrixView';
 import { DetailPanel } from '@/components/detail/DetailPanel';
 import { OutputPreviewPanel } from '@/components/output/OutputPreviewPanel';
@@ -379,21 +379,10 @@ export default function BrumFlowPage() {
       {detailPanelOpen && (
         <div className="w-[380px] shrink-0 border-l border-border overflow-y-auto">
           {viewMode === 'flow' && (
-            <div className="relative h-[160px] border-b border-border overflow-hidden">
-              <MiniMap
-                className="!static !bg-surface-100 !border-0 !rounded-none !m-0 !p-0 !shadow-none"
-                style={{ width: '100%', height: '100%' }}
-                nodeColor={(node) => getMiniMapNodeColor(node.type)}
-                nodeStrokeColor="rgba(15, 23, 42, 0.9)"
-                nodeStrokeWidth={1}
-                maskColor="rgba(2, 6, 23, 0.45)"
-                maskStrokeColor="rgba(125, 211, 252, 0.95)"
-                maskStrokeWidth={1.5}
-                pannable
-                zoomable={false}
-                offsetScale={2}
-              />
-            </div>
+            <div
+              id="minimap-portal"
+              className="relative h-[160px] border-b border-border overflow-hidden"
+            />
           )}
           <DetailPanel />
         </div>
