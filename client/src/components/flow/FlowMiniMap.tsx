@@ -1,17 +1,15 @@
 import { useCallback } from 'react';
-import { useStore, useReactFlow } from '@xyflow/react';
+import { useNodes, useViewport, useReactFlow } from '@xyflow/react';
 import { getMiniMapNodeColor } from './NodeFlowView';
 
 /**
- * Custom minimap that reads from the ReactFlow store.
+ * Custom minimap that reads from the ReactFlow store via public hooks.
  * Works anywhere inside <ReactFlowProvider> — no need to be
  * a child of <ReactFlow>, so it can live in the detail panel.
  */
 export function FlowMiniMap() {
-  const nodes = useStore((s) => s.nodes);
-  const viewport = useStore((s) => ({ x: s.transform[0], y: s.transform[1], zoom: s.transform[2] }));
-  const rfWidth = useStore((s) => s.width);
-  const rfHeight = useStore((s) => s.height);
+  const nodes = useNodes();
+  const viewport = useViewport();
   const { setViewport } = useReactFlow();
 
   // Bounding box of all nodes
@@ -38,6 +36,11 @@ export function FlowMiniMap() {
   maxY += pad;
   const bbW = maxX - minX;
   const bbH = maxY - minY;
+
+  // Get the ReactFlow container element dimensions
+  const rfEl = document.querySelector('.react-flow');
+  const rfWidth = rfEl?.clientWidth ?? 800;
+  const rfHeight = rfEl?.clientHeight ?? 600;
 
   // Viewport rectangle in graph coordinates
   const vpX = -viewport.x / viewport.zoom;
