@@ -10,6 +10,7 @@
  */
 
 import { useFlowStore } from './flowStore';
+import { bindGraphStoreSave } from './flowGraphStore';
 import * as api from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 import { getFlowHandleLayout } from '@/components/flow/flowLayout';
@@ -93,6 +94,13 @@ export function scheduleStoreSave(
     });
   }, 400);
 }
+
+// Wire up the flowGraphStore save bridge so its mutations trigger persistence.
+// This runs at module init — after scheduleStoreSave is defined but before
+// any store actions fire.
+bindGraphStoreSave((needsResolve) => {
+  scheduleStoreSave(saveGraph, resolvePaths, needsResolve);
+});
 
 // ---------------------------------------------------------------------------
 // saveGraph

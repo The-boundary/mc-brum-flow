@@ -1233,3 +1233,30 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     get().showToast('Scaffolded typical pipeline', 'success');
   },
 }));
+
+// ---------------------------------------------------------------------------
+// Re-exports: sub-stores + coordinator
+// ---------------------------------------------------------------------------
+// New code should import from the focused sub-stores directly.
+// These re-exports exist so that flowStore.ts acts as a barrel during
+// the incremental migration — existing consumers keep working.
+
+export { useSceneStore, isValidCamera } from './sceneStore';
+export { useConfigStore } from './configStore';
+export { useFlowGraphStore, useFlowNode, genNodeId, normalizeFlowEdges, areSerializedValuesEqual } from './flowGraphStore';
+export { useOutputStore } from './outputStore';
+export { useSyncStore } from './syncStore';
+export { useUiStore } from './uiStore';
+export type { ViewMode } from './uiStore';
+
+export {
+  scheduleStoreSave,
+  saveGraph,
+  resolvePaths,
+  loadAll,
+  setActiveScene,
+  initSocket,
+  assignNodeConfig,
+  assignNodeCamera,
+  scaffoldPipeline,
+} from './flowCoordinator';
