@@ -175,9 +175,13 @@ export function getFlowSemantics(
 
     pushCameraToSet(nodeCameraIds, nodeId, cameraNodeId);
 
-    for (const edge of getEdgesForLane(outgoingEdges.get(nodeId) ?? [], 'source', lane)) {
+    // Group nodes broadcast: all cameras flow through ALL output edges
+    const node = nodesById.get(nodeId);
+    const effectiveLane = node?.type === 'group' ? null : lane;
+
+    for (const edge of getEdgesForLane(outgoingEdges.get(nodeId) ?? [], 'source', effectiveLane)) {
       pushCameraToSet(edgeCameraIds, edge.id, cameraNodeId);
-      const nextLane = parseHandleIndex(edge.target_handle) ?? parseHandleIndex(edge.source_handle) ?? lane;
+      const nextLane = parseHandleIndex(edge.target_handle) ?? parseHandleIndex(edge.source_handle) ?? effectiveLane;
       if (nodesById.has(edge.target)) {
         walkCameraCoverage(edge.target, nextLane, cameraNodeId, visited);
       }

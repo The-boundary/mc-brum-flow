@@ -76,6 +76,54 @@ describe('getFlowSemantics', () => {
       expect(result.edgeCameraCounts.get('e3')).toBe(2);
     });
 
+    it('group node broadcasts all cameras to all output edges', () => {
+      const nodes = [
+        makeNode('cam1', 'camera', 'Cam1', { x: 0, y: 0 }),
+        makeNode('cam2', 'camera', 'Cam2', { x: 0, y: 100 }),
+        makeNode('g', 'group', 'Group'),
+        makeNode('ls1', 'lightSetup', 'LS1', { x: 200, y: 0 }),
+        makeNode('ls2', 'lightSetup', 'LS2', { x: 200, y: 100 }),
+      ];
+      const edges = [
+        makeEdge('e1', 'cam1', 'g', undefined, 'target-0'),
+        makeEdge('e2', 'cam2', 'g', undefined, 'target-1'),
+        makeEdge('e3', 'g', 'ls1', 'source-0', 'target-0'),
+        makeEdge('e4', 'g', 'ls2', 'source-1', 'target-0'),
+      ];
+      const result = getFlowSemantics(nodes, edges, null);
+
+      // Both output edges from group should carry BOTH cameras (orange)
+      expect(result.edgeCameraCounts.get('e3')).toBe(2);
+      expect(result.edgeCameraCounts.get('e4')).toBe(2);
+      // Input edges carry 1 camera each
+      expect(result.edgeCameraCounts.get('e1')).toBe(1);
+      expect(result.edgeCameraCounts.get('e2')).toBe(1);
+    });
+
+    it('group broadcast propagates correct counts through downstream processing chain', () => {
+      const nodes = [
+        makeNode('cam1', 'camera', 'Cam1', { x: 0, y: 0 }),
+        makeNode('cam2', 'camera', 'Cam2', { x: 0, y: 100 }),
+        makeNode('g', 'group', 'Group'),
+        makeNode('ls1', 'lightSetup', 'LS1', { x: 200, y: 0 }),
+        makeNode('ls2', 'lightSetup', 'LS2', { x: 200, y: 100 }),
+        makeNode('tm', 'toneMapping', 'TM'),
+      ];
+      const edges = [
+        makeEdge('e1', 'cam1', 'g', undefined, 'target-0'),
+        makeEdge('e2', 'cam2', 'g', undefined, 'target-1'),
+        makeEdge('e3', 'g', 'ls1', 'source-0', 'target-0'),
+        makeEdge('e4', 'g', 'ls2', 'source-1', 'target-0'),
+        makeEdge('e5', 'ls1', 'tm', 'source-0', 'target-0'),
+        makeEdge('e6', 'ls2', 'tm', 'source-0', 'target-1'),
+      ];
+      const result = getFlowSemantics(nodes, edges, null);
+
+      // Both LS output edges carry 2 cameras
+      expect(result.edgeCameraCounts.get('e5')).toBe(2);
+      expect(result.edgeCameraCounts.get('e6')).toBe(2);
+    });
+
     it('returns 0 for edges not reachable from any camera', () => {
       const nodes = [
         makeNode('g', 'group'),
