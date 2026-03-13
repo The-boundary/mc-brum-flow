@@ -35,11 +35,17 @@ function parseHandleIndex(handleId?: string): number | null {
 function getEdgesForLane(edges: FlowEdge[], side: 'source' | 'target', lane: number | null) {
   if (lane === null) return edges;
 
-  const matched = edges.filter((edge) => parseHandleIndex(side === 'source' ? edge.source_handle : edge.target_handle) === lane);
+  const handleKey = side === 'source' ? 'source_handle' : 'target_handle';
+  const matched = edges.filter((edge) => parseHandleIndex(edge[handleKey]) === lane);
   if (matched.length > 0) return matched;
 
-  const laneAgnostic = edges.filter((edge) => (side === 'source' ? edge.source_handle : edge.target_handle) == null);
-  return laneAgnostic.length > 0 ? laneAgnostic : edges;
+  const laneAgnostic = edges.filter((edge) => edge[handleKey] == null);
+  if (laneAgnostic.length > 0) return laneAgnostic;
+
+  // If any edge has a handle assignment, lane-routing is active on this node.
+  // Don't fall back to all edges — the path is broken for this lane.
+  const hasLaneRouting = edges.some((edge) => edge[handleKey] != null);
+  return hasLaneRouting ? [] : edges;
 }
 
 function summarizeLabels(labels: Set<string>, fallback: string) {

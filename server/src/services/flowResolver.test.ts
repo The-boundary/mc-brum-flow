@@ -656,6 +656,57 @@ describe('resolveFlowPaths', () => {
       expect(result).toHaveLength(2);
     });
 
+    it('terminates path when lane-specific edge is missing', () => {
+      const result = resolveFlowPaths({
+        flow: {
+          nodes: [
+            makeNode('cam1', 'camera', { camera_id: 'c1' }),
+            makeNode('cam2', 'camera', { camera_id: 'c2' }),
+            makeNode('split', 'lightSetup', { label: 'Split' }),
+            makeNode('out1', 'output'),
+          ],
+          edges: [
+            // cam1 enters on target-0, cam2 enters on target-1
+            makeEdge('cam1', 'split', { source_handle: 'source-0', target_handle: 'target-0' }),
+            makeEdge('cam2', 'split', { source_handle: 'source-0', target_handle: 'target-1' }),
+            // Only source-0 has an outgoing edge — source-1 is missing (deleted)
+            makeEdge('split', 'out1', { source_handle: 'source-0', target_handle: 'target-0' }),
+          ],
+        },
+        configs: {},
+        cameras: { c1: { name: 'CamA' }, c2: { name: 'CamB' } },
+        defaults: {},
+      });
+
+      // Only cam1 (lane 0) should reach output; cam2 (lane 1) has no exit edge
+      expect(result).toHaveLength(1);
+      expect(result[0].cameraName).toBe('CamA');
+    });
+
+    it('still falls back to all edges when no edge has a handle', () => {
+      const result = resolveFlowPaths({
+        flow: {
+          nodes: [
+            makeNode('cam1', 'camera', { camera_id: 'c1' }),
+            makeNode('n1', 'lightSetup', { label: 'LS' }),
+            makeNode('out1', 'output'),
+          ],
+          edges: [
+            // No handles at all — pre-handle-routing state
+            makeEdge('cam1', 'n1', { target_handle: 'target-0' }),
+            makeEdge('n1', 'out1'),
+          ],
+        },
+        configs: {},
+        cameras: { c1: { name: 'Cam1' } },
+        defaults: {},
+      });
+
+      // Should still find path via fallback (no lane routing active on n1's outgoing)
+      expect(result).toHaveLength(1);
+      expect(result[0].cameraName).toBe('Cam1');
+    });
+
     it('group node broadcasts camera to all output edges regardless of lane', () => {
       const result = resolveFlowPaths({
         flow: {

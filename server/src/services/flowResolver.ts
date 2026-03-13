@@ -120,7 +120,12 @@ function getOutgoingForLane(outgoing: Map<string, any[]>, nodeId: string, lane: 
   if (matched.length > 0) return matched;
 
   const laneAgnostic = edges.filter((edge) => edge.source_handle == null);
-  return laneAgnostic.length > 0 ? laneAgnostic : edges;
+  if (laneAgnostic.length > 0) return laneAgnostic;
+
+  // If any outgoing edge has a handle assignment, lane-routing is active on this node.
+  // Don't fall back to all edges — the path is broken for this lane.
+  const hasLaneRouting = edges.some((edge) => edge.source_handle != null);
+  return hasLaneRouting ? [] : edges;
 }
 
 export function resolveFlowPaths({
