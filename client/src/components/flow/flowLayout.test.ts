@@ -164,9 +164,9 @@ describe('getFlowHandleLayout', () => {
     const result = getFlowHandleLayout(nodes, edges);
     const lyHandles = result.nodeHandles.get('ly');
 
-    // 2 incoming edges → at least 2 input handles and 2 output handles
+    // 2 incoming edges → at least 2 input handles; output count based on outgoing
     expect(lyHandles!.inputHandleIds.length).toBeGreaterThanOrEqual(2);
-    expect(lyHandles!.outputHandleIds.length).toBeGreaterThanOrEqual(2);
+    expect(lyHandles!.outputHandleIds.length).toBeGreaterThanOrEqual(1);
 
     // Edges should be on different target handles
     expect(result.edgeHandles.get('e1')!.targetHandle).toBe('target-0');
@@ -290,6 +290,23 @@ describe('getAutoLayoutPositions', () => {
 
     expect(positions['a'].y).toBeLessThan(positions['b'].y);
     expect(positions['b'].y).toBeLessThan(positions['c'].y);
+  });
+
+  it('sorts downstream siblings by source_handle index (source-0 above source-1)', () => {
+    const nodes = [
+      makeNode('grp', 'group'),
+      makeNode('ls1', 'lightSetup'),
+      makeNode('ls2', 'lightSetup'),
+    ];
+    // grp source-0 → ls1, grp source-1 → ls2
+    const edges = [
+      makeEdge('e1', 'grp', 'ls1', 'source-0', undefined),
+      makeEdge('e2', 'grp', 'ls2', 'source-1', undefined),
+    ];
+    const positions = getAutoLayoutPositions(nodes, edges);
+
+    // ls1 (source-0) should be above ls2 (source-1) → lower Y value
+    expect(positions['ls1'].y).toBeLessThan(positions['ls2'].y);
   });
 });
 

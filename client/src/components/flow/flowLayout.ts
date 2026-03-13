@@ -102,9 +102,10 @@ export function getFlowHandleLayout(flowNodes: FlowNode[], flowEdges: FlowEdge[]
       compareEdgesByCounterpart(a, b, edgeMaps.nodesById, 'outgoing')
     );
 
-    const channelCount = Math.max(incoming.length, outgoing.length, 1);
-    const inputHandleIds = INPUT_NODE_TYPES.has(node.type) ? buildHandleIds('target', channelCount) : [];
-    const outputHandleIds = OUTPUT_NODE_TYPES.has(node.type) ? buildHandleIds('source', channelCount) : [];
+    const inputCount = Math.max(incoming.length, 1);
+    const outputCount = Math.max(outgoing.length, 1);
+    const inputHandleIds = INPUT_NODE_TYPES.has(node.type) ? buildHandleIds('target', inputCount) : [];
+    const outputHandleIds = OUTPUT_NODE_TYPES.has(node.type) ? buildHandleIds('source', outputCount) : [];
 
     nodeHandles.set(node.id, { inputHandleIds, outputHandleIds });
 
@@ -181,8 +182,25 @@ export function getAutoLayoutPositions(flowNodes: FlowNode[], flowEdges: FlowEdg
     };
   }
 
-  // Post-process: sort sibling nodes by their target_handle index so
-  // nodes connecting to target-0 appear above nodes connecting to target-1.
+  // Post-process: reorder sibling nodes by handle index to eliminate edge crossings.
+  // Two passes: first sort by target_handle (nodes feeding into the same target),
+  // then sort by source_handle (nodes fed from the same source). This propagates
+  // ordering both upstream and downstream.
+
+  function reorderSiblings(groups: Map<string, { nodeId: string; handleIndex: number }[]>) {
+    for (const siblings of groups.values()) {
+      if (siblings.length < 2) continue;
+      const yValues = siblings.map((s) => positions[s.nodeId]?.y).filter((y): y is number => y != null);
+      if (yValues.length !== siblings.length) continue;
+      yValues.sort((a, b) => a - b);
+      siblings.sort((a, b) => a.handleIndex - b.handleIndex);
+      siblings.forEach((s, i) => {
+        positions[s.nodeId].y = yValues[i];
+      });
+    }
+  }
+
+  // Pass 1: sort upstream siblings by target_handle index (target-0 above target-1)
   const siblingsByTarget = new Map<string, { nodeId: string; handleIndex: number }[]>();
   for (const edge of flowEdges) {
     const hi = parseHandleIndex(edge.target_handle);
@@ -190,19 +208,17 @@ export function getAutoLayoutPositions(flowNodes: FlowNode[], flowEdges: FlowEdg
     if (!siblingsByTarget.has(edge.target)) siblingsByTarget.set(edge.target, []);
     siblingsByTarget.get(edge.target)!.push({ nodeId: edge.source, handleIndex: hi });
   }
+  reorderSiblings(siblingsByTarget);
 
-  for (const siblings of siblingsByTarget.values()) {
-    if (siblings.length < 2) continue;
-    // Collect current Y values, sort them ascending (top-first)
-    const yValues = siblings.map((s) => positions[s.nodeId]?.y).filter((y): y is number => y != null);
-    if (yValues.length !== siblings.length) continue;
-    yValues.sort((a, b) => a - b);
-    // Assign Y values by handle index order (lowest handle index gets lowest Y = highest on screen)
-    siblings.sort((a, b) => a.handleIndex - b.handleIndex);
-    siblings.forEach((s, i) => {
-      positions[s.nodeId].y = yValues[i];
-    });
+  // Pass 2: sort downstream siblings by source_handle index (source-0 above source-1)
+  const siblingsBySource = new Map<string, { nodeId: string; handleIndex: number }[]>();
+  for (const edge of flowEdges) {
+    const hi = parseHandleIndex(edge.source_handle);
+    if (hi === null) continue;
+    if (!siblingsBySource.has(edge.source)) siblingsBySource.set(edge.source, []);
+    siblingsBySource.get(edge.source)!.push({ nodeId: edge.target, handleIndex: hi });
   }
+  reorderSiblings(siblingsBySource);
 
   return positions;
 }
