@@ -9,6 +9,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { useUiStore } from '@/stores/uiStore';
 import { useFlowStore } from '@/stores/flowStore';
 import { NodeFlowView } from '@/components/flow/NodeFlowView';
+import { FlowMiniMap } from '@/components/flow/FlowMiniMap';
 import { MatrixView } from '@/components/matrix/MatrixView';
 import { DetailPanel } from '@/components/detail/DetailPanel';
 import { OutputPreviewPanel } from '@/components/output/OutputPreviewPanel';
@@ -378,6 +379,11 @@ export default function BrumFlowPage() {
         {/* Detail panel */}
       {detailPanelOpen && (
         <div className="w-[380px] shrink-0 border-l border-border overflow-y-auto">
+          {viewMode === 'flow' && (
+            <div className="h-[160px] border-b border-border shrink-0">
+              <FlowMiniMap />
+            </div>
+          )}
           <DetailPanel />
         </div>
       )}

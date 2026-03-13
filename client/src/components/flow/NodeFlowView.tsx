@@ -3,7 +3,6 @@ import {
   Background,
   BackgroundVariant,
   getSmoothStepPath,
-  MiniMap,
   ReactFlow,
   SelectionMode,
   type Connection,
@@ -814,19 +813,6 @@ export function NodeFlowView() {
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(190 12% 20%)" />
-        <MiniMap
-          className="!bg-surface-100 !border !border-border !rounded-lg !shadow-lg"
-          style={{ position: 'absolute', top: 8, right: 8, width: 200, height: 120 }}
-          nodeColor={(node) => getMiniMapNodeColor(node.type)}
-          nodeStrokeColor="rgba(15, 23, 42, 0.9)"
-          nodeStrokeWidth={1}
-          maskColor="rgba(2, 6, 23, 0.45)"
-          maskStrokeColor="rgba(125, 211, 252, 0.95)"
-          maskStrokeWidth={1.5}
-          pannable
-          zoomable={false}
-          offsetScale={2}
-        />
       </ReactFlow>
 
       {contextMenu && (
