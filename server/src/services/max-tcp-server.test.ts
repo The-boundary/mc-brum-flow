@@ -1,9 +1,17 @@
 import net from 'node:net';
 
 // ── Mocks — declared before the import that uses them ──
+// vi.hoisted() ensures these are available when vi.mock factories run (they are hoisted)
 
-const mockEmitSocketEvent = vi.fn();
-const mockDbQuery = vi.fn();
+const { mockEmitSocketEvent, mockDbQuery, mockConfig } = vi.hoisted(() => ({
+  mockEmitSocketEvent: vi.fn(),
+  mockDbQuery: vi.fn(),
+  mockConfig: {
+    maxTcpServerPort: 9999,
+    nodeEnv: 'test',
+    maxTcpAuthToken: '',
+  } as Record<string, unknown>,
+}));
 
 vi.mock('./socket-events.js', () => ({
   emitSocketEvent: (...args: unknown[]) => mockEmitSocketEvent(...args),
@@ -14,10 +22,7 @@ vi.mock('./supabase.js', () => ({
 }));
 
 vi.mock('../config.js', () => ({
-  config: {
-    maxTcpServerPort: 9999,
-    nodeEnv: 'test',
-  },
+  config: mockConfig,
 }));
 
 vi.mock('../utils/logger.js', () => ({
@@ -74,20 +79,10 @@ function waitMs(ms: number) {
 // ── Tests ──
 
 describe('max-tcp-server', () => {
-  const TEST_PORT = 19876; // Use a high port unlikely to conflict
-
   beforeEach(() => {
     vi.clearAllMocks();
     mockDbQuery.mockResolvedValue({ rows: [] });
-
-    // Override the config port for our tests
-    // We access this through the mock
-    vi.doMock('../config.js', () => ({
-      config: {
-        maxTcpServerPort: TEST_PORT,
-        nodeEnv: 'test',
-      },
-    }));
+    mockConfig.maxTcpAuthToken = '';
   });
 
   afterEach(() => {
@@ -636,6 +631,128 @@ describe('max-tcp-server', () => {
   describe('invalidateEventHandlerCache', () => {
     it('can be called without error', () => {
       expect(() => invalidateEventHandlerCache()).not.toThrow();
+    });
+  });
+
+  describe('authentication', () => {
+    it('rejects register without token when auth is configured', async () => {
+      mockConfig.maxTcpAuthToken = 'secret-token-123';
+      startMaxTcpServer();
+      await waitMs(50);
+
+      const client = await createTcpClient(9999);
+      try {
+        // Collect data sent back from the server
+        const received: string[] = [];
+        client.on('data', (data: Buffer) => {
+          received.push(data.toString());
+        });
+
+        await sendJson(client, {
+          type: 'register',
+          instance_id: 'unauth-inst',
+          hostname: 'WS-UNAUTH',
+        });
+        await waitMs(100);
+
+        // Should NOT have registered
+        expect(getConnectedInstances()).toHaveLength(0);
+
+        // Should have received an error response
+        const combined = received.join('');
+        const parsed = JSON.parse(combined.trim());
+        expect(parsed.type).toBe('error');
+        expect(parsed.message).toBe('Authentication failed');
+      } finally {
+        client.destroy();
+      }
+    });
+
+    it('rejects register with wrong token when auth is configured', async () => {
+      mockConfig.maxTcpAuthToken = 'secret-token-123';
+      startMaxTcpServer();
+      await waitMs(50);
+
+      const client = await createTcpClient(9999);
+      try {
+        await sendJson(client, {
+          type: 'register',
+          instance_id: 'wrong-token-inst',
+          hostname: 'WS-WRONG',
+          auth_token: 'wrong-token',
+        });
+        await waitMs(100);
+
+        expect(getConnectedInstances()).toHaveLength(0);
+      } finally {
+        client.destroy();
+      }
+    });
+
+    it('accepts register with correct token', async () => {
+      mockConfig.maxTcpAuthToken = 'secret-token-123';
+      startMaxTcpServer();
+      await waitMs(50);
+
+      const client = await createTcpClient(9999);
+      try {
+        await sendJson(client, {
+          type: 'register',
+          instance_id: 'auth-inst',
+          hostname: 'WS-AUTH',
+          auth_token: 'secret-token-123',
+        });
+        await waitMs(50);
+
+        const instances = getConnectedInstances();
+        expect(instances).toHaveLength(1);
+        expect(instances[0].id).toBe('auth-inst');
+        expect(instances[0].hostname).toBe('WS-AUTH');
+      } finally {
+        client.destroy();
+      }
+    });
+
+    it('accepts register without token when auth is not configured', async () => {
+      mockConfig.maxTcpAuthToken = '';
+      startMaxTcpServer();
+      await waitMs(50);
+
+      const client = await createTcpClient(9999);
+      try {
+        await sendJson(client, {
+          type: 'register',
+          instance_id: 'noauth-inst',
+          hostname: 'WS-NOAUTH',
+        });
+        await waitMs(50);
+
+        const instances = getConnectedInstances();
+        expect(instances).toHaveLength(1);
+        expect(instances[0].id).toBe('noauth-inst');
+      } finally {
+        client.destroy();
+      }
+    });
+
+    it('ignores heartbeat from unregistered connection', async () => {
+      startMaxTcpServer();
+      await waitMs(50);
+
+      const client = await createTcpClient(9999);
+      try {
+        // Send heartbeat without registering first
+        await sendJson(client, {
+          type: 'heartbeat',
+          current_file: 'test.max',
+        });
+        await waitMs(50);
+
+        // No instances should exist
+        expect(getConnectedInstances()).toHaveLength(0);
+      } finally {
+        client.destroy();
+      }
     });
   });
 

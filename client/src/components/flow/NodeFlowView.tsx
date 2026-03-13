@@ -99,7 +99,7 @@ function formatNodeTypeLabel(type: NodeType) {
   return NODE_TYPE_META[type]?.label ?? type;
 }
 
-function getHiddenPreviousNodeIds(flowNodes: FlowNode[], flowEdges: FlowEdge[]) {
+export function getHiddenPreviousNodeIds(flowNodes: FlowNode[], flowEdges: FlowEdge[]) {
   const incomingEdges = new Map<string, FlowEdge[]>();
   const hiddenNodeIds = new Set<string>();
 
