@@ -655,6 +655,41 @@ describe('resolveFlowPaths', () => {
       // Both outputs should be reached
       expect(result).toHaveLength(2);
     });
+
+    it('group node broadcasts camera to all output edges regardless of lane', () => {
+      const result = resolveFlowPaths({
+        flow: {
+          nodes: [
+            makeNode('cam1', 'camera', { camera_id: 'c1' }),
+            makeNode('cam2', 'camera', { camera_id: 'c2' }),
+            makeNode('g', 'group', { label: 'Room' }),
+            makeNode('ls1', 'lightSetup', { label: 'Day' }),
+            makeNode('ls2', 'lightSetup', { label: 'Night' }),
+            makeNode('out1', 'output'),
+            makeNode('out2', 'output'),
+          ],
+          edges: [
+            makeEdge('cam1', 'g', { target_handle: 'target-0' }),
+            makeEdge('cam2', 'g', { target_handle: 'target-1' }),
+            makeEdge('g', 'ls1', { source_handle: 'source-0', target_handle: 'target-0' }),
+            makeEdge('g', 'ls2', { source_handle: 'source-1', target_handle: 'target-0' }),
+            makeEdge('ls1', 'out1', { source_handle: 'source-0', target_handle: 'target-0' }),
+            makeEdge('ls2', 'out2', { source_handle: 'source-0', target_handle: 'target-0' }),
+          ],
+        },
+        configs: {},
+        cameras: { c1: { name: 'CamA' }, c2: { name: 'CamB' } },
+        defaults: {},
+      });
+
+      // Each camera should produce a path through BOTH light setups (4 total paths)
+      expect(result).toHaveLength(4);
+      const pathKeys = result.map((p) => p.pathKey).sort();
+      expect(pathKeys).toContain('cam1>g>ls1>out1');
+      expect(pathKeys).toContain('cam1>g>ls2>out2');
+      expect(pathKeys).toContain('cam2>g>ls1>out1');
+      expect(pathKeys).toContain('cam2>g>ls2>out2');
+    });
   });
 
   describe('null/undefined safety', () => {

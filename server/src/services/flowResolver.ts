@@ -162,8 +162,11 @@ export function resolveFlowPaths({
       paths.push(resolveSinglePath(nextTrail, nodes, configs, cameras, defaults));
     }
 
-    for (const edge of getOutgoingForLane(outgoingEdges, nodeId, lane)) {
-      const nextLane = parseHandleIndex(edge.target_handle) ?? parseHandleIndex(edge.source_handle) ?? lane;
+    // Group nodes broadcast: all cameras flow through ALL output edges
+    const effectiveLane = node.type === 'group' ? null : lane;
+
+    for (const edge of getOutgoingForLane(outgoingEdges, nodeId, effectiveLane)) {
+      const nextLane = parseHandleIndex(edge.target_handle) ?? parseHandleIndex(edge.source_handle) ?? effectiveLane;
       visit(edge.target, nextTrail, nextLane);
     }
   };
