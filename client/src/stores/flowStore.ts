@@ -249,8 +249,10 @@ function normalizeFlowEdges(flowNodes: FlowNode[], flowEdges: FlowEdge[]) {
     const assigned = layout.edgeHandles.get(edge.id);
     return {
       ...edge,
-      source_handle: edge.source_handle ?? assigned?.sourceHandle,
-      target_handle: edge.target_handle ?? assigned?.targetHandle,
+      // Always use layout's resolved handles — the layout system resolves conflicts
+      // when multiple edges claim the same handle slot on a node
+      source_handle: assigned?.sourceHandle ?? edge.source_handle,
+      target_handle: assigned?.targetHandle ?? edge.target_handle,
     };
   });
 }

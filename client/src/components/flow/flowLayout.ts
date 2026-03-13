@@ -108,21 +108,35 @@ export function getFlowHandleLayout(flowNodes: FlowNode[], flowEdges: FlowEdge[]
 
     nodeHandles.set(node.id, { inputHandleIds, outputHandleIds });
 
+    // Track claimed handles to resolve conflicts (two edges claiming the same slot)
+    const claimedInputs = new Set<string>();
     incoming.forEach((edge, index) => {
       const assignment = edgeHandles.get(edge.id) ?? {};
       const explicitIndex = parseHandleIndex(edge.target_handle);
-      assignment.targetHandle = explicitIndex !== null
+      let handle = explicitIndex !== null
         ? inputHandleIds[explicitIndex] ?? inputHandleIds[index] ?? inputHandleIds[0]
         : inputHandleIds[index] ?? inputHandleIds[0];
+      // Resolve conflict: if this handle is already claimed, fall back to position-based
+      if (claimedInputs.has(handle) && inputHandleIds[index]) {
+        handle = inputHandleIds[index];
+      }
+      claimedInputs.add(handle);
+      assignment.targetHandle = handle;
       edgeHandles.set(edge.id, assignment);
     });
 
+    const claimedOutputs = new Set<string>();
     outgoing.forEach((edge, index) => {
       const assignment = edgeHandles.get(edge.id) ?? {};
       const explicitIndex = parseHandleIndex(edge.source_handle);
-      assignment.sourceHandle = explicitIndex !== null
+      let handle = explicitIndex !== null
         ? outputHandleIds[explicitIndex] ?? outputHandleIds[index] ?? outputHandleIds[0]
         : outputHandleIds[index] ?? outputHandleIds[0];
+      if (claimedOutputs.has(handle) && outputHandleIds[index]) {
+        handle = outputHandleIds[index];
+      }
+      claimedOutputs.add(handle);
+      assignment.sourceHandle = handle;
       edgeHandles.set(edge.id, assignment);
     });
   }
