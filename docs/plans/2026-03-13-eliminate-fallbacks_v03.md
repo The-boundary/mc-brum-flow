@@ -52,10 +52,10 @@
 - [ ] Task 15: Log auto-scene selection on initial load
 
 ### Phase 4: TCP + Route Validation
-- [ ] Task 16: Log invalid cameras dropped during Max import
-- [ ] Task 17: Replace `Date.now()` instance ID fallback with UUID
-- [ ] Task 18: Log default PID and empty eval_result in TCP message processing
-- [ ] Task 19: Document and log the `format` default to 'EXR' in submit-render
+- [x] Task 16: Log invalid cameras dropped during Max import
+- [x] Task 17: Replace `Date.now()` instance ID fallback with UUID
+- [x] Task 18: Log default PID and empty eval_result in TCP message processing
+- [x] Task 19: Document and log the `format` default to 'EXR' in submit-render
 
 ### Phase 5: UI Panel Defensive Patterns
 - [ ] Task 20: Rely on store toasts from Task 14 for `ensureEditableConfig` failure in DetailPanel

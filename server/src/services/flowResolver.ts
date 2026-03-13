@@ -19,6 +19,7 @@ export interface ResolvedFlowPath {
   resolvedConfig: Record<string, unknown>;
   enabled: boolean;
   stageLabels: Partial<Record<'lightSetup' | 'toneMapping' | 'layerSetup' | 'aspectRatio' | 'stageRev' | 'deadline' | 'override', string>>;
+  warnings: string[];
 }
 
 const STAGE_LABEL_TYPES = new Set([
@@ -192,7 +193,12 @@ function resolveSinglePath(
 ): ResolvedFlowPath {
   const pathKey = nodeIds.join('>');
   const outputNodeId = nodeIds[nodeIds.length - 1];
-  const outputNode = nodes.get(outputNodeId) ?? {};
+  const warnings: string[] = [];
+  const outputNode = nodes.get(outputNodeId);
+  if (!outputNode) {
+    warnings.push(`Output node "${outputNodeId}" not found in flow — path may be invalid`);
+  }
+  const safeOutputNode = outputNode ?? {};
   const groupLabels: string[] = [];
   const stageLabels: ResolvedFlowPath['stageLabels'] = {};
   let cameraName = '';
@@ -204,7 +210,13 @@ function resolveSinglePath(
     if (!node) continue;
 
     if (node.type === 'camera' && node.camera_id) {
-      cameraName = cameras[node.camera_id]?.name ?? node.label;
+      const dbCamera = cameras[node.camera_id];
+      if (dbCamera) {
+        cameraName = dbCamera.name;
+      } else {
+        cameraName = node.label;
+        warnings.push(`Camera "${node.camera_id}" not found in DB, using node label "${node.label}"`);
+      }
     }
 
     if (node.type === 'group') {
@@ -219,18 +231,22 @@ function resolveSinglePath(
       revLabel = node.label;
     }
 
-    if (node.config_id && configs[node.config_id]) {
-      Object.assign(resolvedConfig, configs[node.config_id].delta);
+    if (node.config_id) {
+      if (configs[node.config_id]) {
+        Object.assign(resolvedConfig, configs[node.config_id].delta);
+      } else {
+        warnings.push(`Config "${node.config_id}" referenced by node "${nodeId}" not found`);
+      }
     }
   }
 
   normalizeOutputResolution(resolvedConfig);
 
-  const format = outputNode.config_id
-    ? (configs[outputNode.config_id]?.delta?.format ?? 'EXR')
+  const format = safeOutputNode.config_id
+    ? (configs[safeOutputNode.config_id]?.delta?.format ?? 'EXR')
     : 'EXR';
-  const explicitEnabled = outputNode.path_states?.[pathKey];
-  const enabled = explicitEnabled ?? (outputNode.enabled !== false);
+  const explicitEnabled = safeOutputNode.path_states?.[pathKey];
+  const enabled = explicitEnabled ?? (safeOutputNode.enabled !== false);
 
   return {
     pathKey,
@@ -241,5 +257,6 @@ function resolveSinglePath(
     resolvedConfig,
     enabled,
     stageLabels,
+    warnings,
   };
 }

@@ -311,8 +311,12 @@ router.post('/cameras/import-from-max', async (req: Request, res: Response, next
     }
 
     const imported: unknown[] = [];
+    let droppedCount = 0;
     for (const camera of parsed) {
-      if (!camera?.name || typeof camera.max_handle !== 'number') continue;
+      if (!camera?.name || typeof camera.max_handle !== 'number') {
+        droppedCount++;
+        continue;
+      }
       const { rows } = await dbQuery(
         `INSERT INTO cameras (scene_id, name, max_handle, max_class)
          VALUES ($1, $2, $3, $4)
@@ -326,7 +330,11 @@ router.post('/cameras/import-from-max', async (req: Request, res: Response, next
       }
     }
 
-    res.json({ success: true, data: { imported: imported.length, cameras: imported } });
+    if (droppedCount > 0) {
+      logger.warn({ droppedCount, totalParsed: parsed.length }, 'Dropped invalid camera records during Max import');
+    }
+
+    res.json({ success: true, data: { imported: imported.length, dropped: droppedCount, cameras: imported } });
   } catch (e) { next(e); }
 });
 
@@ -452,12 +460,18 @@ router.post('/submit-render', async (req: Request, res: Response, next: NextFunc
       if (idx >= paths.length) continue;
       const p = paths[idx];
       if (!p.enabled) continue;
+      const outputFormat = typeof p.resolvedConfig.format === 'string'
+        ? p.resolvedConfig.format
+        : 'EXR';
+      if (typeof p.resolvedConfig.format !== 'string') {
+        logger.debug({ pathKey: p.pathKey, filename: p.filename }, 'submit-render: format not set, defaulting to EXR');
+      }
       const result = await submitDeadlineJob({
         jobName: p.filename.replace(/\.[^.]+$/, ''),
         scenePath: scene.file_path,
         cameraName: p.cameraName,
         outputPath: `/renders/${scene.name}/${p.filename}`,
-        outputFormat: (p.resolvedConfig.format as string) ?? 'EXR',
+        outputFormat,
         resolvedConfig: p.resolvedConfig,
       });
       jobIds.push(result);

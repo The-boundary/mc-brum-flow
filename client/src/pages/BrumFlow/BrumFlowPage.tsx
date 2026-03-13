@@ -54,6 +54,7 @@ export default function BrumFlowPage() {
     assignNodeCamera,
     dismissCameraMatchPrompt,
     pushToMax,
+    showToast,
     importCamerasFromMax,
   } = useFlowStore();
 
@@ -459,7 +460,12 @@ export default function BrumFlowPage() {
                     .then(async () => {
                       dismissCameraMatchPrompt();
                       if (cameraMatchPrompt.pathKey) {
-                        await pushToMax(cameraMatchPrompt.pathKey);
+                        const result = await pushToMax(cameraMatchPrompt.pathKey);
+                        if (result.ok) {
+                          showToast('Pushed to 3ds Max', 'success');
+                        } else if (result.reason === 'error') {
+                          showToast(result.message ?? 'Push to 3ds Max failed', 'error');
+                        }
                       }
                     });
                 }}

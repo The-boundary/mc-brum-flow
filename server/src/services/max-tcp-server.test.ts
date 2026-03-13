@@ -155,7 +155,7 @@ describe('max-tcp-server', () => {
 
         const instances = getConnectedInstances();
         expect(instances).toHaveLength(1);
-        expect(instances[0].id).toMatch(/^max_\d+$/);
+        expect(instances[0].id).toMatch(/^max_[0-9a-f]{12}$/);
         expect(instances[0].hostname).toBe('WS-02');
         expect(instances[0].username).toBe('unknown');
         expect(instances[0].pid).toBe(0);

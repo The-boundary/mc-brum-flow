@@ -261,6 +261,12 @@ export async function syncSceneToMaxNow(input: SyncSceneNowInput): Promise<MaxSy
     return idleState;
   }
 
+  if (target.path.warnings.length > 0) {
+    for (const warning of target.path.warnings) {
+      emitMaxLog({ level: 'warn', summary: 'sync:path-warning', detail: warning });
+    }
+  }
+
   if (!target.path.enabled && input.force) {
     throw new Error(`Cannot sync disabled path ${target.path.pathKey}`);
   }
@@ -338,35 +344,57 @@ export async function syncSceneToMaxNow(input: SyncSceneNowInput): Promise<MaxSy
   }
 }
 
-function resolveTargetPath(
+export function resolveTargetPath(
   paths: ResolvedFlowPath[],
   syncState: MaxSyncState | null,
   input: SyncSceneNowInput,
 ) {
-  let path = input.preferredPathKey
-    ? paths.find((candidate) => candidate.pathKey === input.preferredPathKey)
-    : undefined;
+  let path: ResolvedFlowPath | undefined;
+  let resolvedVia = 'none';
+
+  if (input.preferredPathKey) {
+    path = paths.find((candidate) => candidate.pathKey === input.preferredPathKey);
+    if (path) resolvedVia = 'preferredPathKey';
+  }
 
   if (!path && input.preferredPathIndex !== undefined) {
     path = paths[input.preferredPathIndex];
+    if (path) resolvedVia = 'preferredPathIndex';
   }
 
   if (!path && syncState?.active_path_key) {
     path = paths.find((candidate) => candidate.pathKey === syncState.active_path_key);
+    if (path) resolvedVia = 'syncState.active_path_key';
   }
 
   if (!path) {
     path = paths.find((candidate) => candidate.enabled);
+    if (path) resolvedVia = 'firstEnabled';
   }
 
   if (!path) {
+    logger.debug({ pathCount: paths.length }, 'resolveTargetPath: no viable path found');
     return null;
   }
 
   if (!path.enabled && !input.force) {
+    const original = path;
     path = paths.find((candidate) => candidate.enabled);
+    if (path) {
+      logger.info(
+        { originalPathKey: original.pathKey, substitutedPathKey: path.pathKey },
+        'resolveTargetPath: disabled path substituted with enabled alternative'
+      );
+      emitMaxLog({
+        level: 'warn',
+        summary: `sync:path-substituted — requested path is disabled`,
+        detail: `Original: ${original.pathKey}\nSubstituted: ${path.pathKey}`,
+      });
+      resolvedVia = `substituted(was:${resolvedVia})`;
+    }
   }
 
+  logger.debug({ resolvedVia, pathKey: path?.pathKey }, 'resolveTargetPath: resolved');
   return path ? { path } : null;
 }
 

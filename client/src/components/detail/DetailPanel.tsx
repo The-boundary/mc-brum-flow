@@ -541,6 +541,11 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
   const parameterGroupKeys = nodeType === 'override'
     ? (upstreamNodeType ? (NODE_PARAMETER_GROUPS[upstreamNodeType] ?? []) : [])
     : (NODE_PARAMETER_GROUPS[nodeType] ?? []);
+
+  if (import.meta.env.DEV && nodeType !== 'override' && !(nodeType in NODE_PARAMETER_GROUPS)) {
+    console.warn(`NODE_PARAMETER_GROUPS: no entry for node type "${nodeType}"`);
+  }
+
   const [settingsFilter, setSettingsFilter] = useState('');
 
   const configsForType = useMemo(

@@ -60,7 +60,58 @@ vi.mock('../utils/logger.js', () => ({
   },
 }));
 
+import http from 'node:http';
+import express from 'express';
 import { buildImportCamerasScript, areSerializedValuesEqual } from './index.js';
+import router from './index.js';
+import { executeMaxMcpScript } from '../services/max-mcp-client.js';
+import { dbQuery } from '../services/supabase.js';
+import { logger } from '../utils/logger.js';
+
+const mockExecuteMaxMcpScript = executeMaxMcpScript as ReturnType<typeof vi.fn>;
+const mockDbQuery = dbQuery as ReturnType<typeof vi.fn>;
+const mockLogger = logger as { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn>; error: ReturnType<typeof vi.fn>; debug: ReturnType<typeof vi.fn> };
+
+// ── Helpers for route integration tests ──
+
+function createTestApp() {
+  const app = express();
+  app.use(express.json());
+  app.use('/api', router);
+  return app;
+}
+
+function requestJson(
+  server: http.Server,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(path, `http://127.0.0.1:${(server.address() as { port: number }).port}`);
+    const payload = body ? JSON.stringify(body) : undefined;
+    const req = http.request(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(payload ? { 'Content-Length': Buffer.byteLength(payload).toString() } : {}),
+      },
+    }, (res) => {
+      let data = '';
+      res.on('data', (chunk: string) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          resolve({ status: res.statusCode ?? 0, body: JSON.parse(data) });
+        } catch {
+          reject(new Error(`Failed to parse response: ${data}`));
+        }
+      });
+    });
+    req.on('error', reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
 
 // ── Tests ──
 
@@ -198,5 +249,83 @@ describe('areSerializedValuesEqual', () => {
       { a: 1 },
       { a: 1, b: 2 },
     )).toBe(false);
+  });
+});
+
+describe('POST /cameras/import-from-max', () => {
+  let server: http.Server;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    const app = createTestApp();
+    server = app.listen(0);
+  });
+
+  afterEach(() => {
+    server.close();
+  });
+
+  it('reports dropped cameras when parsed payload contains invalid entries', async () => {
+    // Mock scene lookup
+    mockDbQuery.mockImplementation((sql: string) => {
+      if (sql.includes('SELECT instance_host')) {
+        return { rows: [{ instance_host: '10.0.0.1' }] };
+      }
+      if (sql.includes('INSERT INTO cameras')) {
+        return { rows: [{ id: 'cam-1', name: 'PhysCamera001', max_handle: 1, max_class: 'Physical' }] };
+      }
+      return { rows: [] };
+    });
+
+    // Return a mix of valid and invalid cameras from Max
+    mockExecuteMaxMcpScript.mockResolvedValue({
+      result: JSON.stringify([
+        { name: 'PhysCamera001', max_handle: 1, max_class: 'Physical' },
+        { name: '', max_handle: 2 },           // empty name — invalid
+        { max_handle: 3 },                      // missing name — invalid
+        { name: 'NoCam', max_handle: 'bad' },   // non-number handle — invalid
+      ]),
+    });
+
+    const res = await requestJson(server, 'POST', '/api/cameras/import-from-max', { scene_id: 'scene-1' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    const data = res.body.data as Record<string, unknown>;
+    expect(data.imported).toBe(1);
+    expect(data.dropped).toBe(3);
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      { droppedCount: 3, totalParsed: 4 },
+      'Dropped invalid camera records during Max import',
+    );
+  });
+
+  it('returns dropped: 0 when all cameras are valid', async () => {
+    mockDbQuery.mockImplementation((sql: string) => {
+      if (sql.includes('SELECT instance_host')) {
+        return { rows: [{ instance_host: '10.0.0.1' }] };
+      }
+      if (sql.includes('INSERT INTO cameras')) {
+        return { rows: [{ id: 'cam-1', name: 'Cam1', max_handle: 1, max_class: '' }] };
+      }
+      return { rows: [] };
+    });
+
+    mockExecuteMaxMcpScript.mockResolvedValue({
+      result: JSON.stringify([
+        { name: 'Cam1', max_handle: 1 },
+      ]),
+    });
+
+    const res = await requestJson(server, 'POST', '/api/cameras/import-from-max', { scene_id: 'scene-1' });
+
+    expect(res.status).toBe(200);
+    const data = res.body.data as Record<string, unknown>;
+    expect(data.imported).toBe(1);
+    expect(data.dropped).toBe(0);
+    expect(mockLogger.warn).not.toHaveBeenCalledWith(
+      expect.objectContaining({ droppedCount: expect.any(Number) }),
+      expect.any(String),
+    );
   });
 });

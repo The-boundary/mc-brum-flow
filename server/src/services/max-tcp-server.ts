@@ -190,7 +190,12 @@ function processMessage(
 
   switch (msg.type) {
     case 'register': {
-      instanceId = typeof msg.instance_id === 'string' ? msg.instance_id : `max_${Date.now()}`;
+      if (typeof msg.instance_id === 'string') {
+        instanceId = msg.instance_id;
+      } else {
+        instanceId = `max_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+        logger.warn({ instanceId }, 'Max TCP: register message missing instance_id, generated fallback');
+      }
 
       // Clean up previous socket for this instance if reconnecting
       const prevSocket = sockets.get(instanceId);
@@ -208,6 +213,10 @@ function processMessage(
         connectedAt: new Date().toISOString(),
         lastHeartbeat: new Date().toISOString(),
       };
+
+      if (typeof msg.pid !== 'number') {
+        logger.debug({ instanceId }, 'Max TCP: register message missing PID');
+      }
 
       instances.set(instanceId, instance);
       sockets.set(instanceId, socket);
@@ -242,7 +251,11 @@ function processMessage(
         if (msg.success === false) {
           pending.reject(new Error(typeof msg.error === 'string' ? msg.error : 'MaxScript evaluation failed'));
         } else {
-          pending.resolve(typeof msg.result === 'string' ? msg.result : '');
+          const resultValue = typeof msg.result === 'string' ? msg.result : '';
+          if (typeof msg.result !== 'string') {
+            logger.debug({ commandId }, 'Max TCP: eval_result has non-string result, defaulting to empty');
+          }
+          pending.resolve(resultValue);
         }
       }
       break;

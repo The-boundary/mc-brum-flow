@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useFlowStore, type ResolvedPath } from '@/stores/flowStore';
-import { ToggleLeft, ToggleRight, FileOutput, Send, Upload, Loader2 } from 'lucide-react';
+import { ToggleLeft, ToggleRight, FileOutput, Send, Upload, Loader2, AlertTriangle } from 'lucide-react';
 
 export function OutputPreviewPanel() {
   const resolvedPaths = useFlowStore((s) => s.resolvedPaths);
@@ -10,6 +10,8 @@ export function OutputPreviewPanel() {
   const setAllResolvedPathsEnabled = useFlowStore((s) => s.setAllResolvedPathsEnabled);
   const pushToMax = useFlowStore((s) => s.pushToMax);
   const submitRender = useFlowStore((s) => s.submitRender);
+  const showToast = useFlowStore((s) => s.showToast);
+  const pathResolutionError = useFlowStore((s) => s.pathResolutionError);
   const syncLog = useFlowStore((s) => s.syncLog);
 
   const enabledCount = resolvedPaths.filter((p) => p.enabled).length;
@@ -23,7 +25,12 @@ export function OutputPreviewPanel() {
   const handlePushToMax = async (pathKey: string) => {
     setPushing(true);
     try {
-      await pushToMax(pathKey);
+      const result = await pushToMax(pathKey);
+      if (result.ok) {
+        showToast('Pushed to 3ds Max', 'success');
+      } else if (result.reason === 'error') {
+        showToast(result.message ?? 'Push to 3ds Max failed', 'error');
+      }
     } finally {
       setPushing(false);
     }
@@ -33,7 +40,12 @@ export function OutputPreviewPanel() {
     if (enabledIndices.length === 0) return;
     setSubmitting(true);
     try {
-      await submitRender(enabledIndices);
+      const success = await submitRender(enabledIndices);
+      if (success) {
+        showToast(`Submitted ${enabledIndices.length} render${enabledIndices.length > 1 ? 's' : ''} to Deadline`, 'success');
+      } else {
+        showToast('Render submission failed', 'error');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -66,7 +78,7 @@ export function OutputPreviewPanel() {
           {enabledCount > 0 && (
             <button
               onClick={handleSubmitRender}
-              disabled={submitting}
+              disabled={submitting || pathResolutionError}
               className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-brand/15 text-brand hover:bg-brand/25 transition disabled:opacity-50"
             >
               {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
@@ -100,7 +112,7 @@ export function OutputPreviewPanel() {
                   onSelect={() => selectNode(path.outputNodeId)}
                   onToggle={() => void setResolvedPathEnabled(path.pathKey, path.outputNodeId, !path.enabled)}
                   onPush={() => handlePushToMax(path.pathKey)}
-                  pushing={pushing}
+                  pushing={pushing || pathResolutionError}
                 />
               ))}
             </tbody>
@@ -157,7 +169,14 @@ function OutputRow({
         </button>
       </td>
       <td className="px-3 py-1.5 font-mono text-[10px] text-foreground truncate max-w-[400px]" onClick={onSelect}>
-        {path.filename}
+        <span className="flex items-center gap-1">
+          {path.filename}
+          {path.warnings && path.warnings.length > 0 && (
+            <span title={path.warnings.join('\n')}>
+              <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+            </span>
+          )}
+        </span>
       </td>
       <td className="px-3 py-1.5 text-fg-muted" onClick={onSelect}>
         {path.cameraName || '—'}

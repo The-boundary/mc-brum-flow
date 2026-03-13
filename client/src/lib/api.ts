@@ -44,7 +44,16 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     ...options,
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
+    const rawText = await res.text();
+    let body: unknown;
+    try {
+      body = JSON.parse(rawText);
+    } catch {
+      throw new ApiError(
+        `API error: ${res.status} (response body not valid JSON)`,
+        { status: res.status, details: { rawBody: rawText.slice(0, 500) } },
+      );
+    }
     throw toApiError(body, res.status, `API error: ${res.status}`);
   }
   let json: unknown;
@@ -54,15 +63,44 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     throw new Error(`API error: invalid JSON response (${res.status})`);
   }
   const data = json as Record<string, unknown>;
-  if (data.success === false) throw toApiError(json, res.status, 'Unknown error');
+  if (data.success !== true) throw toApiError(json, res.status, 'API error: unexpected response format');
   if (data.data === undefined) throw new Error('API error: response missing data field');
   return data.data as T;
+}
+
+async function requestVoid(url: string, options?: RequestInit): Promise<void> {
+  const res = await fetch(`${BASE}${url}`, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  if (!res.ok) {
+    const rawText = await res.text();
+    let body: unknown;
+    try {
+      body = JSON.parse(rawText);
+    } catch {
+      throw new ApiError(
+        `API error: ${res.status} (response body not valid JSON)`,
+        { status: res.status, details: { rawBody: rawText.slice(0, 500) } },
+      );
+    }
+    throw toApiError(body, res.status, `API error: ${res.status}`);
+  }
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch {
+    throw new Error(`API error: invalid JSON response (${res.status})`);
+  }
+  const data = json as Record<string, unknown>;
+  if (data.success !== true) throw toApiError(json, res.status, 'API error: unexpected response format');
 }
 
 // Scenes
 export const fetchScenes = () => request<any[]>('/scenes');
 export const createScene = (data: any) => request<any>('/scenes', { method: 'POST', body: JSON.stringify(data) });
-export const deleteScene = (id: string) => request<void>(`/scenes/${id}`, { method: 'DELETE' });
+export const deleteScene = (id: string) => requestVoid(`/scenes/${id}`, { method: 'DELETE' });
 
 // Studio Defaults
 export const fetchStudioDefaults = () => request<any[]>('/studio-defaults');
@@ -77,7 +115,7 @@ export const createNodeConfig = (data: any) =>
 export const updateNodeConfig = (id: string, data: any) =>
   request<any>(`/node-configs/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 export const deleteNodeConfig = (id: string) =>
-  request<void>(`/node-configs/${id}`, { method: 'DELETE' });
+  requestVoid(`/node-configs/${id}`, { method: 'DELETE' });
 
 // Cameras
 export const fetchCameras = (sceneId?: string) =>
@@ -85,7 +123,7 @@ export const fetchCameras = (sceneId?: string) =>
 export const upsertCamera = (data: any) =>
   request<any>('/cameras', { method: 'POST', body: JSON.stringify(data) });
 export const deleteCamera = (id: string) =>
-  request<void>(`/cameras/${id}`, { method: 'DELETE' });
+  requestVoid(`/cameras/${id}`, { method: 'DELETE' });
 export const importCamerasFromMax = (sceneId: string) =>
   request<{ imported: number; cameras: any[] }>('/cameras/import-from-max', { method: 'POST', body: JSON.stringify({ scene_id: sceneId }) });
 

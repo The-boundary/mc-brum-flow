@@ -3,7 +3,7 @@ import { ApiError } from '@/lib/api';
 import * as api from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 import { getFlowHandleLayout } from '@/components/flow/flowLayout';
-import type { Scene, Camera, StudioDefault, NodeConfig, FlowNode, FlowEdge, NodeType, MaxSyncState } from '@shared/types';
+import type { Scene, Camera, StudioDefault, NodeConfig, FlowNode, FlowEdge, FlowConfig, NodeType, MaxSyncState } from '@shared/types';
 import type { MaxHealthResult } from '@/lib/api';
 
 export interface ResolvedPath {
@@ -15,7 +15,12 @@ export interface ResolvedPath {
   resolvedConfig: Record<string, unknown>;
   enabled: boolean;
   stageLabels: Partial<Record<'lightSetup' | 'toneMapping' | 'layerSetup' | 'aspectRatio' | 'stageRev' | 'deadline' | 'override', string>>;
+  warnings?: string[];
 }
+
+export type PushToMaxResult =
+  | { ok: true }
+  | { ok: false; reason: 'camera-match' | 'error'; message?: string };
 
 export interface SyncLogEntry {
   id: string;
@@ -76,6 +81,7 @@ interface FlowState {
   // Output preview
   resolvedPaths: ResolvedPath[];
   pathCount: number;
+  pathResolutionError: boolean;
   maxSyncState: MaxSyncState | null;
 
   // Max connection
@@ -124,13 +130,34 @@ interface FlowState {
   initSocket: () => void;
   checkMaxHealth: () => Promise<void>;
   importCamerasFromMax: () => Promise<number>;
-  pushToMax: (pathKey?: string, pathIndex?: number) => Promise<boolean>;
+  pushToMax: (pathKey?: string, pathIndex?: number) => Promise<PushToMaxResult>;
   submitRender: (pathIndices: number[]) => Promise<boolean>;
   addSyncLog: (entry: Omit<SyncLogEntry, 'id' | 'timestamp'>) => void;
   showToast: (message: string, level?: 'info' | 'success' | 'error') => void;
   dismissToast: () => void;
   clearMaxDebugLog: () => void;
   dismissCameraMatchPrompt: () => void;
+}
+
+function isValidCamera(value: unknown): value is Camera {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).id === 'string' &&
+    typeof (value as Record<string, unknown>).name === 'string' &&
+    typeof (value as Record<string, unknown>).max_handle === 'number' &&
+    typeof (value as Record<string, unknown>).max_class === 'string'
+  );
+}
+
+function isFlowConfigPayload(value: unknown): value is FlowConfig {
+  if (typeof value !== 'object' || value === null) return false;
+  const row = value as Record<string, unknown>;
+  return (
+    typeof row.scene_id === 'string' &&
+    Array.isArray(row.nodes) &&
+    Array.isArray(row.edges)
+  );
 }
 
 let nextNodeId = 1;
@@ -270,6 +297,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   selectedNodeIds: [],
   resolvedPaths: [],
   pathCount: 0,
+  pathResolutionError: false,
   maxSyncState: null,
   maxHealth: null,
   maxTcpInstances: [],
@@ -292,6 +320,9 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
       const defaultsList = Array.isArray(defaults) ? defaults : [];
       const configsList = Array.isArray(configs) ? configs : [];
       const activeId = scenesList[0]?.id ?? null;
+      if (scenesList.length > 1) {
+        console.info(`Auto-selected first scene "${scenesList[0]?.name}" out of ${scenesList.length} scenes`);
+      }
 
       let cameras: Camera[] = [];
       let flowNodes: FlowNode[] = [];
@@ -308,10 +339,10 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
         ]);
         cameras = cams;
         if (flowConfig) {
-          flowNodes = flowConfig.nodes || [];
-          flowEdges = normalizeFlowEdges(flowNodes, flowConfig.edges || []);
-          flowEdgesWereNormalized = (flowConfig.edges || []).some((edge: FlowEdge) => !edge.source_handle || !edge.target_handle);
-          viewport = flowConfig.viewport || viewport;
+          flowNodes = flowConfig.nodes ?? [];
+          flowEdges = normalizeFlowEdges(flowNodes, flowConfig.edges ?? []);
+          flowEdgesWereNormalized = (flowConfig.edges ?? []).some((edge: FlowEdge) => !edge.source_handle || !edge.target_handle);
+          viewport = flowConfig.viewport ?? viewport;
         }
         maxSyncState = syncState;
       }
@@ -348,13 +379,13 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
         api.fetchFlowConfig(id),
         api.fetchMaxSyncState(id),
       ]);
-      const normalizedEdges = normalizeFlowEdges(flowConfig?.nodes || [], flowConfig?.edges || []);
-      const flowEdgesWereNormalized = (flowConfig?.edges || []).some((edge: FlowEdge) => !edge.source_handle || !edge.target_handle);
+      const normalizedEdges = normalizeFlowEdges(flowConfig?.nodes ?? [], flowConfig?.edges ?? []);
+      const flowEdgesWereNormalized = (flowConfig?.edges ?? []).some((edge: FlowEdge) => !edge.source_handle || !edge.target_handle);
       set({
         cameras: cams,
-        flowNodes: flowConfig?.nodes || [],
+        flowNodes: flowConfig?.nodes ?? [],
         flowEdges: normalizedEdges,
-        viewport: flowConfig?.viewport || { x: 0, y: 0, zoom: 1 },
+        viewport: flowConfig?.viewport ?? { x: 0, y: 0, zoom: 1 },
         maxSyncState,
         loading: false,
       });
@@ -542,6 +573,10 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   },
 
   setResolvedPathEnabled: async (pathKey, outputNodeId, enabled) => {
+    if (get().pathResolutionError) {
+      get().showToast('Cannot toggle paths — path resolution is stale', 'error');
+      return;
+    }
     let updated = false;
 
     set((s) => {
@@ -575,6 +610,10 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
 
   setOutputPathsEnabled: async (outputNodeId, pathKeys, enabled) => {
     if (pathKeys.length === 0) return;
+    if (get().pathResolutionError) {
+      get().showToast('Cannot toggle paths — path resolution is stale', 'error');
+      return;
+    }
 
     const keySet = new Set(pathKeys);
     let updated = false;
@@ -613,6 +652,10 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
   },
 
   setAllResolvedPathsEnabled: async (enabled) => {
+    if (get().pathResolutionError) {
+      get().showToast('Cannot toggle paths — path resolution is stale', 'error');
+      return;
+    }
     let updated = false;
 
     set((s) => {
@@ -660,7 +703,9 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
         viewport,
       });
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Failed to save graph' });
+      const message = err instanceof Error ? err.message : 'Failed to save graph';
+      set({ error: message });
+      get().showToast(message, 'error');
     }
   },
 
@@ -669,10 +714,12 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     if (!activeSceneId) return;
     try {
       const result = await api.resolvePaths(activeSceneId);
-      set({ resolvedPaths: result.paths, pathCount: result.count });
+      set({ resolvedPaths: result.paths, pathCount: result.count, pathResolutionError: false });
     } catch (err) {
-      console.warn('Path resolution failed:', err instanceof Error ? err.message : err);
-      set({ resolvedPaths: [], pathCount: 0 });
+      const message = err instanceof Error ? err.message : 'Path resolution failed';
+      console.warn('Path resolution failed:', message);
+      get().showToast(`Path resolution failed: ${message}`, 'error');
+      set({ pathResolutionError: true });
     }
   },
 
@@ -683,7 +730,9 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
       await get().resolvePaths();
       return config;
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Failed to create preset' });
+      const message = err instanceof Error ? err.message : 'Failed to create preset';
+      set({ error: message });
+      get().showToast(message, 'error');
       return null;
     }
   },
@@ -695,7 +744,9 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
       await get().resolvePaths();
       return config;
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Failed to update preset' });
+      const message = err instanceof Error ? err.message : 'Failed to update preset';
+      set({ error: message });
+      get().showToast(message, 'error');
       return null;
     }
   },
@@ -705,7 +756,9 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
       await api.deleteNodeConfig(id);
       set((s) => ({ nodeConfigs: s.nodeConfigs.filter((c) => c.id !== id) }));
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Failed to delete preset' });
+      const message = err instanceof Error ? err.message : 'Failed to delete preset';
+      set({ error: message });
+      get().showToast(message, 'error');
     }
   },
 
@@ -767,11 +820,12 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
       void get().resolvePaths();
     });
 
-    socket.on('flow-config:updated', (row: any) => {
+    socket.on('flow-config:updated', (row: unknown) => {
+      if (!isFlowConfigPayload(row)) return;
       const { activeSceneId } = get();
       if (row.scene_id === activeSceneId) {
-        const nextNodes = row.nodes || [];
-        const nextEdges = normalizeFlowEdges(nextNodes, row.edges || []);
+        const nextNodes = row.nodes ?? [];
+        const nextEdges = normalizeFlowEdges(nextNodes, row.edges ?? []);
         const currentState = get();
         const nodesChanged = !areSerializedValuesEqual(currentState.flowNodes, nextNodes);
         const edgesChanged = !areSerializedValuesEqual(currentState.flowEdges, nextEdges);
@@ -853,7 +907,13 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     if (!activeSceneId) return 0;
     try {
       const result = await api.importCamerasFromMax(activeSceneId);
-      const importedCameras = Array.isArray(result.cameras) ? (result.cameras as Camera[]) : [];
+      const importedCameras = Array.isArray(result.cameras)
+        ? result.cameras.filter(isValidCamera)
+        : [];
+      const rawCount = Array.isArray(result.cameras) ? result.cameras.length : 0;
+      if (importedCameras.length < rawCount) {
+        console.warn(`Dropped ${rawCount - importedCameras.length} invalid camera records from Max import`);
+      }
       let createdNodes = 0;
 
       set((s) => {
@@ -936,7 +996,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
 
   pushToMax: async (pathKey, pathIndex) => {
     const { activeSceneId } = get();
-    if (!activeSceneId) return false;
+    if (!activeSceneId) return { ok: false as const, reason: 'error' as const, message: 'No active scene' };
     try {
       set({ cameraMatchPrompt: null });
       const state = await api.pushToMax(activeSceneId, pathKey, pathIndex);
@@ -948,7 +1008,7 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
         pathKey: state?.active_path_key,
         error: state?.last_error,
       });
-      return true;
+      return { ok: true as const };
     } catch (err) {
       if (err instanceof ApiError && err.code === 'max_camera_not_found') {
         await get().importCamerasFromMax().catch(() => 0);
@@ -966,9 +1026,12 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
           : null;
         const resolvedPath = pathKey ? resolvedPaths.find((path) => path.pathKey === pathKey) : null;
         const cameraNodeId = resolvedPath?.nodeIds.find((nodeId) => flowNodes.find((node) => node.id === nodeId)?.type === 'camera');
-        const availableCameras = availableHandles && availableHandles.size > 0
+        const availableCameras = availableHandles
           ? cameras.filter((camera) => availableHandles.has(camera.max_handle))
           : cameras;
+        if (availableHandles && availableHandles.size === 0) {
+          get().showToast('No cameras found in the 3ds Max scene', 'error');
+        }
 
         if (cameraNodeId && availableCameras.length > 0) {
           set({
@@ -990,16 +1053,17 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
           cameraName: requestedCameraName,
           error: err.message,
         });
-        return false;
+        return { ok: false as const, reason: 'camera-match' as const, message: err.message };
       }
 
-      set({ error: err instanceof Error ? err.message : 'Push to Max failed' });
+      const message = err instanceof Error ? err.message : 'Push to Max failed';
+      set({ error: message });
       get().addSyncLog({
         status: 'error',
         reason: 'manual-push',
-        error: err instanceof Error ? err.message : 'Push to Max failed',
+        error: message,
       });
-      return false;
+      return { ok: false as const, reason: 'error' as const, message };
     }
   },
 
