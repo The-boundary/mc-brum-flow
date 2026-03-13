@@ -1,16 +1,31 @@
-import { useCallback } from 'react';
-import { useNodes, useViewport, useReactFlow } from '@xyflow/react';
+import { useCallback, useMemo } from 'react';
+import { useFlowStore } from '@/stores/flowStore';
+import { getFlowHandleLayout, getNodeHeight } from './flowLayout';
 import { getMiniMapNodeColor } from './NodeFlowView';
 
+const NODE_WIDTH = 180;
+
 /**
- * Custom minimap that reads from the ReactFlow store via public hooks.
- * Works anywhere inside <ReactFlowProvider> — no need to be
- * a child of <ReactFlow>, so it can live in the detail panel.
+ * Custom minimap built on the app's own Zustand flowStore.
+ * No React Flow hooks needed — works anywhere in the component tree.
  */
 export function FlowMiniMap() {
-  const nodes = useNodes();
-  const viewport = useViewport();
-  const { setViewport } = useReactFlow();
+  const flowNodes = useFlowStore((s) => s.flowNodes);
+  const flowEdges = useFlowStore((s) => s.flowEdges);
+  const viewport = useFlowStore((s) => s.viewport);
+  const updateViewport = useFlowStore((s) => s.updateViewport);
+
+  // Compute node sizes via handle layout
+  const nodeSizes = useMemo(() => {
+    const layout = getFlowHandleLayout(flowNodes, flowEdges);
+    const sizes = new Map<string, { w: number; h: number }>();
+    for (const node of flowNodes) {
+      const handles = layout.nodeHandles.get(node.id);
+      const hCount = Math.max(handles?.inputHandleIds.length ?? 0, handles?.outputHandleIds.length ?? 0);
+      sizes.set(node.id, { w: NODE_WIDTH, h: getNodeHeight(hCount) });
+    }
+    return sizes;
+  }, [flowNodes, flowEdges]);
 
   // Bounding box of all nodes
   let minX = Infinity;
@@ -18,13 +33,12 @@ export function FlowMiniMap() {
   let maxX = -Infinity;
   let maxY = -Infinity;
 
-  for (const node of nodes) {
-    const w = node.measured?.width ?? (node.width as number | undefined) ?? 150;
-    const h = node.measured?.height ?? (node.height as number | undefined) ?? 60;
+  for (const node of flowNodes) {
+    const size = nodeSizes.get(node.id) ?? { w: NODE_WIDTH, h: 60 };
     minX = Math.min(minX, node.position.x);
     minY = Math.min(minY, node.position.y);
-    maxX = Math.max(maxX, node.position.x + w);
-    maxY = Math.max(maxY, node.position.y + h);
+    maxX = Math.max(maxX, node.position.x + size.w);
+    maxY = Math.max(maxY, node.position.y + size.h);
   }
 
   if (!isFinite(minX)) return null;
@@ -59,16 +73,13 @@ export function FlowMiniMap() {
       const ratioY = (e.clientY - rect.top) / rect.height;
       const graphX = minX + ratioX * bbW;
       const graphY = minY + ratioY * bbH;
-      setViewport(
-        {
-          x: -(graphX - vpW / 2) * viewport.zoom,
-          y: -(graphY - vpH / 2) * viewport.zoom,
-          zoom: viewport.zoom,
-        },
-        { duration: 200 },
-      );
+      updateViewport({
+        x: -(graphX - vpW / 2) * viewport.zoom,
+        y: -(graphY - vpH / 2) * viewport.zoom,
+        zoom: viewport.zoom,
+      });
     },
-    [minX, minY, bbW, bbH, vpW, vpH, viewport.zoom, setViewport],
+    [minX, minY, bbW, bbH, vpW, vpH, viewport.zoom, updateViewport],
   );
 
   return (
@@ -87,16 +98,15 @@ export function FlowMiniMap() {
       </defs>
 
       {/* Nodes */}
-      {nodes.map((node) => {
-        const w = node.measured?.width ?? (node.width as number | undefined) ?? 150;
-        const h = node.measured?.height ?? (node.height as number | undefined) ?? 60;
+      {flowNodes.map((node) => {
+        const size = nodeSizes.get(node.id) ?? { w: NODE_WIDTH, h: 60 };
         return (
           <rect
             key={node.id}
             x={node.position.x}
             y={node.position.y}
-            width={w}
-            height={h}
+            width={size.w}
+            height={size.h}
             fill={getMiniMapNodeColor(node.type)}
             stroke="rgba(15, 23, 42, 0.9)"
             strokeWidth={1 * strokeScale}
