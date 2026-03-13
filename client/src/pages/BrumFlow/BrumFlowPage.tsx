@@ -378,12 +378,6 @@ export default function BrumFlowPage() {
         {/* Detail panel */}
       {detailPanelOpen && (
         <div className="w-[380px] shrink-0 border-l border-border overflow-y-auto">
-          {viewMode === 'flow' && (
-            <div
-              id="minimap-portal"
-              className="relative h-[160px] border-b border-border overflow-hidden"
-            />
-          )}
           <DetailPanel />
         </div>
       )}
