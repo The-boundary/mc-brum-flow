@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, useEffect } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import { useFlowStore } from '@/stores/flowStore';
 import { getFlowHandleLayout, getNodeHeight } from './flowLayout';
-import { getMiniMapNodeColor } from './NodeFlowView';
+import { getMiniMapNodeColor } from '@/lib/nodeTypeRegistry';
 
 const NODE_WIDTH = 180;
 

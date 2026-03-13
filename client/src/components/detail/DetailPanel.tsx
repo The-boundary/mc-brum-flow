@@ -1,36 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
-  Camera,
-  Contrast,
   Eye,
   EyeOff,
-  FileOutput,
-  FolderOpen,
-  Gauge,
   Layers,
-  RectangleHorizontal,
   RotateCcw,
-  Server,
-  Sun,
   ToggleLeft,
   ToggleRight,
 } from 'lucide-react';
 import type { NodeType } from '@shared/types';
-import { useFlowStore } from '@/stores/flowStore';
+import { useFlowStore, useFlowNode } from '@/stores/flowStore';
+import { NODE_TYPE_REGISTRY } from '@/lib/nodeTypeRegistry';
+import {
+  STAGE_REV_PRESETS,
+  DEADLINE_TARGETS,
+  ASPECT_RATIOS,
+  TONE_MAPPING_PRESETS,
+  LIGHT_SETUP_PRESETS,
+  OUTPUT_FORMATS,
+} from '@/lib/presets';
 
-const NODE_TYPE_LABELS: Record<NodeType, { label: string; color: string; icon: typeof Camera }> = {
-  camera: { label: 'Camera', color: 'text-emerald-400', icon: Camera },
-  group: { label: 'Group', color: 'text-orange-400', icon: FolderOpen },
-  lightSetup: { label: 'Light Setup', color: 'text-amber-400', icon: Sun },
-  toneMapping: { label: 'Tone Mapping', color: 'text-blue-400', icon: Contrast },
-  layerSetup: { label: 'Layer Setup', color: 'text-cyan-400', icon: Layers },
-  aspectRatio: { label: 'Aspect Ratio', color: 'text-teal-400', icon: RectangleHorizontal },
-  stageRev: { label: 'Stage Rev', color: 'text-green-400', icon: Gauge },
-  override: { label: 'Override', color: 'text-red-400', icon: AlertTriangle },
-  deadline: { label: 'Deadline', color: 'text-purple-400', icon: Server },
-  output: { label: 'Output', color: 'text-fuchsia-400', icon: FileOutput },
-};
+// Node type labels/colors/icons now come from NODE_TYPE_REGISTRY in @/lib/nodeTypeRegistry
 
 type ParameterKind = 'int' | 'float' | 'bool' | 'string' | 'enum' | 'color' | 'ref';
 
@@ -68,46 +58,6 @@ interface MarqueeRect {
   height: number;
 }
 
-const STAGE_REV_PRESETS = [
-  { label: 'Rev A', longestEdge: 1500 },
-  { label: 'Rev B', longestEdge: 3000 },
-  { label: 'Rev C', longestEdge: 6000 },
-] as const;
-
-const DEADLINE_TARGETS = [
-  { label: 'Local', pool: 'local' },
-  { label: 'Deadline Local', pool: 'deadline-local' },
-  { label: 'Deadline Cloud', pool: 'deadline-cloud' },
-] as const;
-
-const ASPECT_RATIOS = [
-  { label: '16:9', width: 3840, height: 2160 },
-  { label: '4:3', width: 4000, height: 3000 },
-  { label: '3:2', width: 4500, height: 3000 },
-  { label: '2:1', width: 4096, height: 2048 },
-  { label: '1:1', width: 3000, height: 3000 },
-  { label: '9:16', width: 2160, height: 3840 },
-  { label: '21:9', width: 5040, height: 2160 },
-  { label: '2.39:1', width: 5040, height: 2109 },
-] as const;
-
-const TONE_MAPPING_PRESETS = [
-  { label: 'WARM', delta: { whiteBalance: 5500, saturation: 1.1, contrast: 1.05 } },
-  { label: 'COOL', delta: { whiteBalance: 7500, saturation: 0.95, contrast: 1 } },
-  { label: 'NEUTRAL', delta: { whiteBalance: 6500, saturation: 1, contrast: 1 } },
-  { label: 'HI-CON', delta: { whiteBalance: 6500, saturation: 1.2, contrast: 1.3 } },
-  { label: 'DESAT', delta: { whiteBalance: 6500, saturation: 0.5, contrast: 1 } },
-] as const;
-
-const LIGHT_SETUP_PRESETS = [
-  { label: 'DAY', delta: { skyType: 'Corona Sun + Sky', skyIntensity: 1, sunAngle: 45 } },
-  { label: 'NIGHT', delta: { skyType: 'HDRI', skyIntensity: 0.3, iblMap: 'city_night_01.hdr' } },
-  { label: 'OVERCAST', delta: { skyType: 'HDRI', skyIntensity: 0.7, iblMap: 'overcast_01.hdr' } },
-  { label: 'SUNSET', delta: { skyType: 'Corona Sun + Sky', skyIntensity: 0.8, sunAngle: 10 } },
-  { label: 'STUDIO', delta: { skyType: 'None', skyIntensity: 0, groundPlane: false } },
-] as const;
-
-const OUTPUT_FORMATS = ['JPG', 'PNG', 'EXR', 'CXR'] as const;
 
 const STAGE_REV_FIELDS: EditableFieldSpec[] = [
   {
@@ -403,7 +353,7 @@ export function DetailPanel() {
 }
 
 function CameraDetail({ nodeId }: { nodeId: string }) {
-  const node = useFlowStore((state) => state.flowNodes.find((entry) => entry.id === nodeId));
+  const node = useFlowNode(nodeId);
   const cameras = useFlowStore((state) => state.cameras);
   const assignNodeCamera = useFlowStore((state) => state.assignNodeCamera);
   const updateNodeLabel = useFlowStore((state) => state.updateNodeLabel);
@@ -467,7 +417,7 @@ function CameraDetail({ nodeId }: { nodeId: string }) {
 }
 
 function GroupDetail({ nodeId }: { nodeId: string }) {
-  const node = useFlowStore((state) => state.flowNodes.find((entry) => entry.id === nodeId));
+  const node = useFlowNode(nodeId);
   const flowEdges = useFlowStore((state) => state.flowEdges);
   const flowNodes = useFlowStore((state) => state.flowNodes);
   const resolvedPaths = useFlowStore((state) => state.resolvedPaths);
@@ -540,7 +490,7 @@ function GroupDetail({ nodeId }: { nodeId: string }) {
 }
 
 function ProcessingDetail({ nodeId }: { nodeId: string }) {
-  const node = useFlowStore((state) => state.flowNodes.find((entry) => entry.id === nodeId));
+  const node = useFlowNode(nodeId);
   const nodeConfigs = useFlowStore((state) => state.nodeConfigs);
   const studioDefaults = useFlowStore((state) => state.studioDefaults);
   const flowEdges = useFlowStore((state) => state.flowEdges);
@@ -813,7 +763,7 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
       {node.type === 'override' && upstreamNodeType && (
         <Section title="Overriding">
           <div className="text-[10px] text-fg-dim">
-            Overriding {NODE_TYPE_LABELS[upstreamNodeType]?.label ?? upstreamNodeType} settings
+            Overriding {NODE_TYPE_REGISTRY[upstreamNodeType]?.label ?? upstreamNodeType} settings
             {deltaEntries.length > 0 && ` — ${deltaEntries.length} override${deltaEntries.length === 1 ? '' : 's'}`}
           </div>
         </Section>
@@ -1148,7 +1098,7 @@ function ProcessingDetail({ nodeId }: { nodeId: string }) {
 }
 
 function OutputDetail({ nodeId, splitIndex }: { nodeId: string; splitIndex?: number | null }) {
-  const node = useFlowStore((state) => state.flowNodes.find((entry) => entry.id === nodeId));
+  const node = useFlowNode(nodeId);
   const nodeConfigs = useFlowStore((state) => state.nodeConfigs);
   const resolvedPaths = useFlowStore((state) => state.resolvedPaths);
   const setResolvedPathEnabled = useFlowStore((state) => state.setResolvedPathEnabled);
@@ -1579,17 +1529,17 @@ function EmptyPanel() {
 }
 
 function NodeHeader({ label, type }: { label: string; type: NodeType }) {
-  const meta = NODE_TYPE_LABELS[type];
+  const meta = NODE_TYPE_REGISTRY[type];
   const Icon = meta.icon;
 
   return (
     <div>
       <div className="flex items-center gap-2">
-        <Icon className={`h-4 w-4 ${meta.color}`} />
+        <Icon className={`h-4 w-4 ${meta.textColor}`} />
         <h2 className="text-sm font-semibold text-foreground">{label}</h2>
       </div>
       <div className="mt-0.5">
-        <span className={`text-[10px] font-medium ${meta.color}`}>{meta.label}</span>
+        <span className={`text-[10px] font-medium ${meta.textColor}`}>{meta.label}</span>
       </div>
     </div>
   );
@@ -1615,7 +1565,7 @@ function Row({ label, value }: { label: string; value: string }) {
 
 function NodeRef({ nodeId, label, type }: { nodeId: string; label: string; type: NodeType }) {
   const selectNode = useFlowStore((state) => state.selectNode);
-  const meta = NODE_TYPE_LABELS[type];
+  const meta = NODE_TYPE_REGISTRY[type];
   const Icon = meta.icon;
 
   return (
@@ -1624,7 +1574,7 @@ function NodeRef({ nodeId, label, type }: { nodeId: string; label: string; type:
       onClick={() => selectNode(nodeId)}
       className="flex w-full items-center gap-1.5 py-0.5 text-left text-xs text-fg-muted transition-colors hover:text-brand"
     >
-      <Icon className={`h-3 w-3 ${meta.color}`} />
+      <Icon className={`h-3 w-3 ${meta.textColor}`} />
       {label}
     </button>
   );

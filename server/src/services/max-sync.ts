@@ -34,7 +34,7 @@ interface SyncSceneNowInput extends QueueSceneSyncInput {}
 
 interface SceneSyncContext {
   scene: Record<string, unknown> | null;
-  flow: Record<string, unknown> | null;
+  flow: { nodes: unknown[]; edges: unknown[] } | null;
   configs: Record<string, any>;
   cameras: Record<string, any>;
   defaults: Record<string, any>;
@@ -95,7 +95,7 @@ interface PendingSceneSync extends QueueSceneSyncInput {
 const pendingSceneSyncs = new Map<string, PendingSceneSync>();
 const sceneSyncLocks = new Map<string, Promise<void>>();
 
-function buildImportCamerasScript() {
+export function buildImportCamerasScript() {
   return `(
 fn bfEscJson s = (
   local out = ""
@@ -242,7 +242,7 @@ export async function syncSceneToMaxNow(input: SyncSceneNowInput): Promise<MaxSy
   }
 
   const paths = resolveFlowPaths({
-    flow: flow as any,
+    flow,
     configs: context.configs,
     cameras: context.cameras,
     defaults: context.defaults,

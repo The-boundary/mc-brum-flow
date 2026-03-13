@@ -111,7 +111,7 @@ export const PIPELINE_ORDER: NodeType[] = [
 // Override can appear after any processing node
 export const OVERRIDE_TYPE: NodeType = 'override';
 
-const DIRECT_CONNECTIONS: Record<NodeType, NodeType[]> = {
+export const DIRECT_CONNECTIONS: Record<NodeType, NodeType[]> = {
   camera: ['group', 'lightSetup'],
   group: ['group', 'lightSetup'],
   lightSetup: ['override', 'toneMapping'],
@@ -124,13 +124,20 @@ const DIRECT_CONNECTIONS: Record<NodeType, NodeType[]> = {
   output: [],
 };
 
-const OVERRIDABLE_SOURCE_TYPES = new Set<NodeType>([
+export const OVERRIDABLE_SOURCE_TYPES = new Set<NodeType>([
   'lightSetup',
   'toneMapping',
   'layerSetup',
   'aspectRatio',
   'stageRev',
 ]);
+
+export function parseHandleIndex(handleId?: string): number | null {
+  if (!handleId) return null;
+  const match = handleId.match(/-(\d+)$/);
+  if (!match) return null;
+  return Number.parseInt(match[1], 10);
+}
 
 // Returns the pipeline stage index for a node type (-1 for override)
 export function pipelineIndex(type: NodeType): number {

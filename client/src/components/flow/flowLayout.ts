@@ -1,5 +1,5 @@
 import dagre from 'dagre';
-import { pipelineIndex, type FlowEdge, type FlowNode, type NodeType } from '@shared/types';
+import { pipelineIndex, parseHandleIndex, getAllowedTargetNodeTypes, type FlowEdge, type FlowNode, type NodeType } from '@shared/types';
 
 export interface NodeHandleLayout {
   inputHandleIds: string[];
@@ -62,13 +62,6 @@ const OUTPUT_NODE_TYPES = new Set<NodeType>([
 
 function buildHandleIds(prefix: 'source' | 'target', count: number): string[] {
   return Array.from({ length: Math.max(1, count) }, (_value, index) => `${prefix}-${index}`);
-}
-
-function parseHandleIndex(handleId?: string): number | null {
-  if (!handleId) return null;
-  const match = handleId.match(/-(\d+)$/);
-  if (!match) return null;
-  return Number.parseInt(match[1], 10);
 }
 
 function compareEdgesByCounterpart(
@@ -232,72 +225,6 @@ export function getAutoLayoutPositions(flowNodes: FlowNode[], flowEdges: FlowEdg
 }
 
 // ── Suggestion Helpers ──
-
-const DIRECT_CONNECTIONS: Record<NodeType, NodeType[]> = {
-  camera: ['group', 'lightSetup'],
-  group: ['group', 'lightSetup'],
-  lightSetup: ['override', 'toneMapping'],
-  toneMapping: ['override', 'layerSetup'],
-  layerSetup: ['override', 'aspectRatio'],
-  aspectRatio: ['override', 'stageRev'],
-  stageRev: ['override', 'deadline'],
-  override: [],
-  deadline: ['output'],
-  output: [],
-};
-
-const OVERRIDABLE_SOURCE_TYPES = new Set<NodeType>([
-  'lightSetup',
-  'toneMapping',
-  'layerSetup',
-  'aspectRatio',
-  'stageRev',
-]);
-
-function getNextPipelineType(type: NodeType): NodeType | null {
-  return (DIRECT_CONNECTIONS[type] ?? []).find((targetType) => targetType !== 'override') ?? null;
-}
-
-function getAllowedTargetNodeTypes(sourceNodeId: string, flowNodes: FlowNode[], flowEdges: FlowEdge[]): NodeType[] {
-  const edgeMaps = buildEdgeMaps(flowNodes, flowEdges);
-  const sourceNode = edgeMaps.nodesById.get(sourceNodeId);
-  if (!sourceNode) return [];
-
-  if (sourceNode.type !== 'override') {
-    return [...(DIRECT_CONNECTIONS[sourceNode.type] ?? [])];
-  }
-
-  const queue = [sourceNodeId];
-  const visited = new Set<string>();
-  const continuationTypes = new Set<NodeType>();
-
-  while (queue.length > 0) {
-    const nodeId = queue.shift();
-    if (!nodeId || visited.has(nodeId)) continue;
-    visited.add(nodeId);
-
-    for (const edge of edgeMaps.incoming.get(nodeId) ?? []) {
-      const upstreamNode = edgeMaps.nodesById.get(edge.source);
-      if (!upstreamNode) continue;
-
-      if (upstreamNode.type === 'override') {
-        queue.push(upstreamNode.id);
-        continue;
-      }
-
-      if (!OVERRIDABLE_SOURCE_TYPES.has(upstreamNode.type)) {
-        continue;
-      }
-
-      const nextType = getNextPipelineType(upstreamNode.type);
-      if (nextType) {
-        continuationTypes.add(nextType);
-      }
-    }
-  }
-
-  return continuationTypes.size === 1 ? [...continuationTypes] : [];
-}
 
 export function getSuggestedNextNodeTypes(
   flowNodes: FlowNode[],

@@ -1,3 +1,5 @@
+import { parseHandleIndex } from '../../../shared/types/index.js';
+
 interface FlowRow {
   nodes: any[];
   edges: any[];
@@ -104,13 +106,6 @@ function normalizeOutputResolution(resolvedConfig: Record<string, unknown>) {
 
   delete resolvedConfig.longest_edge;
   delete resolvedConfig.ratio;
-}
-
-function parseHandleIndex(handleId: unknown): number | null {
-  if (typeof handleId !== 'string') return null;
-  const match = handleId.match(/-(\d+)$/);
-  if (!match) return null;
-  return Number.parseInt(match[1], 10);
 }
 
 function getOutgoingForLane(outgoing: Map<string, any[]>, nodeId: string, lane: number | null) {

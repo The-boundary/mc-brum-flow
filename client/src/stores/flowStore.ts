@@ -3,7 +3,7 @@ import { ApiError } from '@/lib/api';
 import * as api from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 import { getFlowHandleLayout } from '@/components/flow/flowLayout';
-import type { Scene, Camera, StudioDefault, NodeConfig, FlowNode, FlowEdge, FlowConfig, NodeType, MaxSyncState } from '@shared/types';
+import { isValidFlowConnection, type Scene, type Camera, type StudioDefault, type NodeConfig, type FlowNode, type FlowEdge, type FlowConfig, type NodeType, type MaxSyncState } from '@shared/types';
 import type { MaxHealthResult } from '@/lib/api';
 
 export interface ResolvedPath {
@@ -191,85 +191,6 @@ function scheduleStoreSave(
 
 function areSerializedValuesEqual(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right);
-}
-
-const DIRECT_CONNECTIONS: Record<NodeType, NodeType[]> = {
-  camera: ['group', 'lightSetup'],
-  group: ['group', 'lightSetup'],
-  lightSetup: ['override', 'toneMapping'],
-  toneMapping: ['override', 'layerSetup'],
-  layerSetup: ['override', 'aspectRatio'],
-  aspectRatio: ['override', 'stageRev'],
-  stageRev: ['override', 'deadline'],
-  override: [],
-  deadline: ['output'],
-  output: [],
-};
-
-const OVERRIDABLE_SOURCE_TYPES = new Set<NodeType>([
-  'lightSetup',
-  'toneMapping',
-  'layerSetup',
-  'aspectRatio',
-  'stageRev',
-]);
-
-function getNextPipelineType(type: NodeType): NodeType | null {
-  return (DIRECT_CONNECTIONS[type] ?? []).find((targetType) => targetType !== 'override') ?? null;
-}
-
-function isValidFlowConnection(sourceNodeId: string, targetNodeId: string, flowNodes: FlowNode[], flowEdges: FlowEdge[]) {
-  if (sourceNodeId === targetNodeId) return false;
-
-  const nodesById = new Map(flowNodes.map((node) => [node.id, node]));
-  const sourceNode = nodesById.get(sourceNodeId);
-  const targetNode = nodesById.get(targetNodeId);
-  if (!sourceNode || !targetNode) return false;
-
-  if (sourceNode.type !== 'override') {
-    return (DIRECT_CONNECTIONS[sourceNode.type] ?? []).includes(targetNode.type);
-  }
-
-  const incoming = new Map<string, FlowEdge[]>();
-  for (const edge of flowEdges) {
-    const existing = incoming.get(edge.target);
-    if (existing) {
-      existing.push(edge);
-    } else {
-      incoming.set(edge.target, [edge]);
-    }
-  }
-
-  const queue = [sourceNodeId];
-  const visited = new Set<string>();
-  const continuationTypes = new Set<NodeType>();
-
-  while (queue.length > 0) {
-    const nodeId = queue.shift();
-    if (!nodeId || visited.has(nodeId)) continue;
-    visited.add(nodeId);
-
-    for (const edge of incoming.get(nodeId) ?? []) {
-      const upstreamNode = nodesById.get(edge.source);
-      if (!upstreamNode) continue;
-
-      if (upstreamNode.type === 'override') {
-        queue.push(upstreamNode.id);
-        continue;
-      }
-
-      if (!OVERRIDABLE_SOURCE_TYPES.has(upstreamNode.type)) {
-        continue;
-      }
-
-      const nextType = getNextPipelineType(upstreamNode.type);
-      if (nextType) {
-        continuationTypes.add(nextType);
-      }
-    }
-  }
-
-  return continuationTypes.size === 1 && continuationTypes.has(targetNode.type);
 }
 
 function normalizeFlowEdges(flowNodes: FlowNode[], flowEdges: FlowEdge[]) {
@@ -1286,3 +1207,10 @@ export const useFlowStore = create<FlowState>()((set, get) => ({
     get().showToast('Scaffolded typical pipeline', 'success');
   },
 }));
+
+/** Selector hook: find a single flow node by ID */
+export function useFlowNode(nodeId: string | null | undefined) {
+  return useFlowStore((state) =>
+    nodeId ? state.flowNodes.find((entry) => entry.id === nodeId) ?? null : null
+  );
+}

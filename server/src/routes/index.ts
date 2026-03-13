@@ -6,6 +6,7 @@ import { resolveFlowPaths } from '../services/flowResolver.js';
 import { config } from '../config.js';
 import { executeMaxMcpScript, probeMaxMcp } from '../services/max-mcp-client.js';
 import {
+  buildImportCamerasScript,
   getMaxSyncState,
   MaxCameraNotFoundError,
   queueAllScenesSync,
@@ -22,39 +23,6 @@ function triggerBackgroundSync(job: Promise<unknown>, context: Record<string, un
   void job.catch((error) => {
     logger.error({ err: error, ...context }, 'Background Max sync scheduling failed');
   });
-}
-
-export function buildImportCamerasScript() {
-  return `(
-fn bfEscJson s = (
-  local out = ""
-  for i = 1 to s.count do (
-    local c = s[i]
-    case c of (
-      "\\\\": out += "\\\\\\\\"
-      "\\"": out += "\\\\\\""
-      "\\n": out += "\\\\n"
-      "\\r": out += "\\\\r"
-      "\\t": out += "\\\\t"
-      default: out += c
-    )
-  )
-  out
-)
-local cameraJson = #()
-for cam in cameras where (superClassOf cam == camera) do (
-  local camName = try (cam.name as string) catch ""
-  local camClass = try ((classOf cam) as string) catch ""
-  local camHandle = try ((getHandleByAnim cam) as integer) catch 0
-  append cameraJson ("{\\\"name\\\":\\\"" + bfEscJson camName + "\\\",\\\"max_handle\\\":" + (camHandle as string) + ",\\\"max_class\\\":\\\"" + bfEscJson camClass + "\\\"}")
-)
-local joined = ""
-for i = 1 to cameraJson.count do (
-  if i > 1 do joined += ","
-  joined += cameraJson[i]
-)
-"[" + joined + "]"
-)`;
 }
 
 async function loadResolvedSceneData(sceneId: string) {

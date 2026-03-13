@@ -1,4 +1,4 @@
-import type { FlowEdge, FlowNode } from '@shared/types';
+import { parseHandleIndex, type FlowEdge, type FlowNode } from '@shared/types';
 
 export interface BranchLabelMeta {
   label: string;
@@ -23,13 +23,6 @@ function pushCameraToSet(map: Map<string, Set<string>>, key: string, cameraNodeI
     return;
   }
   map.set(key, new Set([cameraNodeId]));
-}
-
-function parseHandleIndex(handleId?: string): number | null {
-  if (!handleId) return null;
-  const match = handleId.match(/-(\d+)$/);
-  if (!match) return null;
-  return Number.parseInt(match[1], 10);
 }
 
 function getEdgesForLane(edges: FlowEdge[], side: 'source' | 'target', lane: number | null) {

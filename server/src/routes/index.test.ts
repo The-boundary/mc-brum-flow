@@ -32,18 +32,22 @@ vi.mock('../services/max-mcp-client.js', () => ({
   probeMaxMcp: vi.fn(),
 }));
 
-vi.mock('../services/max-sync.js', () => ({
-  getMaxSyncState: vi.fn(),
-  MaxCameraNotFoundError: class MaxCameraNotFoundError extends Error {
-    code = 'CAMERA_NOT_FOUND';
-    requestedCameraName = '';
-    availableCameras: string[] = [];
-  },
-  queueAllScenesSync: vi.fn(async () => {}),
-  queueSceneSync: vi.fn(async () => {}),
-  queueScenesUsingNodeConfig: vi.fn(async () => {}),
-  syncSceneToMaxNow: vi.fn(),
-}));
+vi.mock('../services/max-sync.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/max-sync.js')>();
+  return {
+    buildImportCamerasScript: actual.buildImportCamerasScript,
+    getMaxSyncState: vi.fn(),
+    MaxCameraNotFoundError: class MaxCameraNotFoundError extends Error {
+      code = 'CAMERA_NOT_FOUND';
+      requestedCameraName = '';
+      availableCameras: string[] = [];
+    },
+    queueAllScenesSync: vi.fn(async () => {}),
+    queueSceneSync: vi.fn(async () => {}),
+    queueScenesUsingNodeConfig: vi.fn(async () => {}),
+    syncSceneToMaxNow: vi.fn(),
+  };
+});
 
 vi.mock('../services/max-tcp-server.js', () => ({
   getConnectedInstances: vi.fn(() => []),
@@ -62,7 +66,8 @@ vi.mock('../utils/logger.js', () => ({
 
 import http from 'node:http';
 import express from 'express';
-import { buildImportCamerasScript, areSerializedValuesEqual } from './index.js';
+import { areSerializedValuesEqual } from './index.js';
+import { buildImportCamerasScript } from '../services/max-sync.js';
 import router from './index.js';
 import { executeMaxMcpScript } from '../services/max-mcp-client.js';
 import { dbQuery } from '../services/supabase.js';
