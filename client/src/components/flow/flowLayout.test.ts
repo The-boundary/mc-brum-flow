@@ -150,6 +150,50 @@ describe('getFlowHandleLayout', () => {
     expect(e1!.targetHandle).toBe('target-1');
     expect(e2!.targetHandle).toBe('target-0');
   });
+
+  it('assigns different handles for multiple edges between same source and target', () => {
+    const nodes = [
+      makeNode('tm1', 'toneMapping', 'TM1', { x: 0, y: 0 }),
+      makeNode('tm2', 'toneMapping', 'TM2', { x: 0, y: 100 }),
+      makeNode('ly', 'layerSetup', 'LayerSetup'),
+    ];
+    const edges = [
+      makeEdge('e1', 'tm1', 'ly', 'source-0', 'target-0'),
+      makeEdge('e2', 'tm2', 'ly', 'source-0', 'target-1'),
+    ];
+    const result = getFlowHandleLayout(nodes, edges);
+    const lyHandles = result.nodeHandles.get('ly');
+
+    // 2 incoming edges → at least 2 input handles and 2 output handles
+    expect(lyHandles!.inputHandleIds.length).toBeGreaterThanOrEqual(2);
+    expect(lyHandles!.outputHandleIds.length).toBeGreaterThanOrEqual(2);
+
+    // Edges should be on different target handles
+    expect(result.edgeHandles.get('e1')!.targetHandle).toBe('target-0');
+    expect(result.edgeHandles.get('e2')!.targetHandle).toBe('target-1');
+  });
+
+  it('handles two edges from same source to same target on different source handles', () => {
+    const nodes = [
+      makeNode('ly', 'layerSetup', 'LayerSetup'),
+      makeNode('ar', 'aspectRatio', 'AR'),
+    ];
+    const edges = [
+      makeEdge('e1', 'ly', 'ar', 'source-0', 'target-0'),
+      makeEdge('e2', 'ly', 'ar', 'source-1', 'target-1'),
+    ];
+    const result = getFlowHandleLayout(nodes, edges);
+
+    // LayerSetup should have 2 output handles
+    expect(result.nodeHandles.get('ly')!.outputHandleIds.length).toBeGreaterThanOrEqual(2);
+    // AR should have 2 input handles
+    expect(result.nodeHandles.get('ar')!.inputHandleIds.length).toBeGreaterThanOrEqual(2);
+
+    expect(result.edgeHandles.get('e1')!.sourceHandle).toBe('source-0');
+    expect(result.edgeHandles.get('e1')!.targetHandle).toBe('target-0');
+    expect(result.edgeHandles.get('e2')!.sourceHandle).toBe('source-1');
+    expect(result.edgeHandles.get('e2')!.targetHandle).toBe('target-1');
+  });
 });
 
 // ── getAutoLayoutPositions ──
