@@ -148,7 +148,12 @@ export function getFlowHandleLayout(flowNodes: FlowNode[], flowEdges: FlowEdge[]
 // ── Dagre Auto-Layout ──
 
 const NODE_WIDTH = 180;
-const NODE_HEIGHT = 60;
+const NODE_BASE_HEIGHT = 60;
+const NODE_HANDLE_SLOT = 24;
+
+export function getNodeHeight(handleCount: number): number {
+  return NODE_BASE_HEIGHT + Math.max(0, handleCount - 1) * NODE_HANDLE_SLOT;
+}
 
 export function getAutoLayoutPositions(flowNodes: FlowNode[], flowEdges: FlowEdge[]): Record<string, { x: number; y: number }> {
   if (flowNodes.length === 0) return {};
@@ -163,8 +168,11 @@ export function getAutoLayoutPositions(flowNodes: FlowNode[], flowEdges: FlowEdg
     marginy: 40,
   });
 
+  const handleLayout = getFlowHandleLayout(flowNodes, flowEdges);
   for (const node of flowNodes) {
-    g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+    const handles = handleLayout.nodeHandles.get(node.id);
+    const hCount = Math.max(handles?.inputHandleIds.length ?? 0, handles?.outputHandleIds.length ?? 0);
+    g.setNode(node.id, { width: NODE_WIDTH, height: getNodeHeight(hCount) });
   }
 
   for (const edge of flowEdges) {
@@ -178,7 +186,7 @@ export function getAutoLayoutPositions(flowNodes: FlowNode[], flowEdges: FlowEdg
     const dagreNode = g.node(node.id);
     positions[node.id] = {
       x: dagreNode.x - NODE_WIDTH / 2,
-      y: dagreNode.y - NODE_HEIGHT / 2,
+      y: dagreNode.y - dagreNode.height / 2,
     };
   }
 

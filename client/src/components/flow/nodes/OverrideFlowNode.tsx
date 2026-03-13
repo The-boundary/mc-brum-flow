@@ -3,6 +3,7 @@ import type { NodeProps } from '@xyflow/react';
 import { AlertTriangle } from 'lucide-react';
 import { useFlowStore } from '@/stores/flowStore';
 import { FlowNodeHandles } from '../FlowNodeHandles';
+import { getNodeHeight } from '../flowLayout';
 import type { BranchLabelMeta } from '../graphSemantics';
 
 interface OverrideFlowData {
@@ -26,9 +27,11 @@ export const OverrideFlowNode = memo(({ id, data }: NodeProps & { data: Override
 
   const config = data.config_id ? nodeConfigs.find((c) => c.id === data.config_id) : null;
   const deltaCount = config ? Object.keys(config.delta).length : 0;
+  const handleCount = Math.max(data.inputHandleIds?.length ?? 0, data.outputHandleIds?.length ?? 0);
 
   return (
     <div
+      style={{ minHeight: getNodeHeight(handleCount) }}
       className={`relative rounded-lg border-2 px-3 py-2 min-w-[150px] cursor-pointer transition-all ${
         isSelected
           ? 'border-red-400 bg-red-400/10 shadow-[0_0_12px_rgba(248,113,113,0.3)]'

@@ -3,6 +3,7 @@ import type { NodeProps } from '@xyflow/react';
 import { FileOutput } from 'lucide-react';
 import { useFlowStore } from '@/stores/flowStore';
 import { FlowNodeHandles } from '../FlowNodeHandles';
+import { getNodeHeight } from '../flowLayout';
 import type { BranchLabelMeta } from '../graphSemantics';
 
 interface OutputFlowData {
@@ -31,9 +32,11 @@ export const OutputFlowNode = memo(({ id, data }: NodeProps & { data: OutputFlow
   const enabledCount = pathsToThis.filter((path) => path.enabled).length;
   const hasResolvedPaths = pathsToThis.length > 0;
   const isFullyDisabled = hasResolvedPaths && enabledCount === 0;
+  const handleCount = data.inputHandleIds?.length ?? 0;
 
   return (
     <div
+      style={{ minHeight: getNodeHeight(handleCount) }}
       className={`relative rounded-lg border px-3 py-2 min-w-[160px] cursor-pointer transition-all ${
         isSelected
           ? 'border-fuchsia-400 bg-fuchsia-400/10 shadow-[0_0_12px_rgba(232,121,249,0.25)]'

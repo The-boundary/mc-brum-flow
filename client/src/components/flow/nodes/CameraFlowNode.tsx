@@ -3,6 +3,7 @@ import type { NodeProps } from '@xyflow/react';
 import { Camera, AlertTriangle } from 'lucide-react';
 import { useFlowStore } from '@/stores/flowStore';
 import { FlowNodeHandles } from '../FlowNodeHandles';
+import { getNodeHeight } from '../flowLayout';
 import type { BranchLabelMeta } from '../graphSemantics';
 
 interface CameraFlowData {
@@ -25,9 +26,11 @@ export const CameraFlowNode = memo(({ id, data }: NodeProps & { data: CameraFlow
 
   const camera = data.camera_id ? cameras.find((c) => c.id === data.camera_id) : null;
   const isMissing = data.camera_id && !camera;
+  const handleCount = data.outputHandleIds?.length ?? 0;
 
   return (
     <div
+      style={{ minHeight: getNodeHeight(handleCount) }}
       className={`relative rounded-lg border px-3 py-2 min-w-[150px] cursor-pointer transition-all ${
         isSelected
           ? 'border-emerald-400 bg-emerald-400/10 shadow-[0_0_12px_rgba(52,211,153,0.25)]'

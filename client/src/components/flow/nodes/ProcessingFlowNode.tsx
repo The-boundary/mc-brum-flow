@@ -3,6 +3,7 @@ import type { NodeProps } from '@xyflow/react';
 import { Sun, Contrast, Layers, RectangleHorizontal, Gauge, Server, type LucideIcon } from 'lucide-react';
 import { useFlowStore } from '@/stores/flowStore';
 import { FlowNodeHandles } from '../FlowNodeHandles';
+import { getNodeHeight } from '../flowLayout';
 import type { BranchLabelMeta } from '../graphSemantics';
 
 const NODE_STYLES: Record<string, { color: string; borderSelected: string; bgSelected: string; shadow: string; hoverBorder: string; badgeBg: string; badgeText: string; handleBg: string; handleBorder: string; icon: LucideIcon; label: string }> = {
@@ -50,9 +51,11 @@ export const ProcessingFlowNode = memo(({ id, data, type }: NodeProps & { data: 
 
   const config = data.config_id ? nodeConfigs.find((c) => c.id === data.config_id) : null;
   const deltaCount = config ? Object.keys(config.delta).length : 0;
+  const handleCount = Math.max(data.inputHandleIds?.length ?? 0, data.outputHandleIds?.length ?? 0);
 
   return (
     <div
+      style={{ minHeight: getNodeHeight(handleCount) }}
       className={`relative rounded-lg border px-3 py-2 min-w-[150px] cursor-pointer transition-all ${
         isSelected
           ? `${style.borderSelected} ${style.bgSelected} ${style.shadow}`

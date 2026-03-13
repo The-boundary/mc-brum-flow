@@ -3,6 +3,7 @@ import type { NodeProps } from '@xyflow/react';
 import { FolderOpen, Eye, EyeOff } from 'lucide-react';
 import { useFlowStore } from '@/stores/flowStore';
 import { FlowNodeHandles } from '../FlowNodeHandles';
+import { getNodeHeight } from '../flowLayout';
 import type { BranchLabelMeta } from '../graphSemantics';
 
 interface GroupFlowData {
@@ -27,9 +28,11 @@ export const GroupFlowNode = memo(({ id, data }: NodeProps & { data: GroupFlowDa
 
   // Count incoming connections
   const incomingCount = flowEdges.filter((e) => e.target === id).length;
+  const handleCount = Math.max(data.inputHandleIds?.length ?? 0, data.outputHandleIds?.length ?? 0);
 
   return (
     <div
+      style={{ minHeight: getNodeHeight(handleCount) }}
       className={`relative rounded-lg border px-3 py-2 min-w-[150px] cursor-pointer transition-all ${
         isSelected
           ? 'border-orange-400 bg-orange-400/10 shadow-[0_0_12px_rgba(251,146,60,0.25)]'
