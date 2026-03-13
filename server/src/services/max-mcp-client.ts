@@ -20,6 +20,13 @@ interface MaxMcpConnectionOptions {
 }
 
 // ── Connection Pool ──
+//
+// NOTE: Tested 2026-03-13 — the 3ds Max MCP listener (192.168.0.72:8765)
+// closes the connection after each response (no keep-alive). The pool
+// infrastructure below still works correctly: acquireSocket creates fresh
+// connections, and releaseSocket detects the closed socket and destroys it.
+// If the listener is updated to support keep-alive, pooling will activate
+// automatically with no code changes needed.
 
 const MAX_POOL_SIZE = 3;
 const IDLE_TIMEOUT_MS = 30_000;
